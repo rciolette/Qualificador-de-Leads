@@ -1,0 +1,27 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+.env
+.env.*
+!.env.example
+.DS_Store
+
+# Artefatos gerados localmente (planilhas de revisão, dumps de inspeção)
+outputs/
+*.inspect.ndjson
+
+# Índices/exports de conversas gerados por ferramentas de IA
+docs/claude-import/
+
+# Lixeira local. O sandbox das sessões do Claude não consegue apagar arquivos, então
+# lock de git travado e afins são RENOMEADOS para cá em vez de removidos. É pasta de
+# descarte: nada aqui deve aparecer como alteração pendente no GitHub Desktop.
+# Pode apagar a pasta inteira pelo Finder quando quiser.
+_to_delete/
+
+# Preferências locais do Claude Code (por máquina, não versionar)
+.claude/settings.local.json
+
+# clone vazio criado em 26/08 — o trabalho vive na raiz deste diretório
+Qualificador de Leads/

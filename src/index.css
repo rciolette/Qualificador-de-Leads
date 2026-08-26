@@ -1,0 +1,427 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /*
+   * TEMA ESCURO (padrao).
+   * Os valores abaixo sao exatamente os que existiam antes da introducao do
+   * tema claro — nada aqui foi alterado, para garantir zero impacto visual.
+   * `.dark` acompanha `:root` porque o next-themes aplica a classe no <html>.
+   */
+  :root,
+  .dark {
+    color-scheme: dark;
+
+    --background: 220 15% 5%;
+    --foreground: 210 20% 92%;
+
+    --card: 220 13% 8%;
+    --card-foreground: 210 20% 92%;
+
+    --popover: 220 13% 10%;
+    --popover-foreground: 210 20% 92%;
+
+    --primary: 160 84% 39%;
+    --primary-foreground: 220 15% 5%;
+
+    --secondary: 220 12% 13%;
+    --secondary-foreground: 210 15% 60%;
+
+    --muted: 220 12% 15%;
+    --muted-foreground: 215 12% 53%;
+
+    --accent: 42 92% 56%;
+    --accent-foreground: 220 15% 5%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 160 84% 39%;
+    --success-foreground: 220 15% 5%;
+
+    --warning: 42 92% 56%;
+    --warning-foreground: 220 15% 5%;
+
+    --border: 220 12% 14%;
+    --input: 220 12% 14%;
+    --ring: 160 84% 39%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 220 13% 8%;
+    --sidebar-foreground: 210 20% 92%;
+    --sidebar-primary: 160 84% 39%;
+    --sidebar-primary-foreground: 220 15% 5%;
+    --sidebar-accent: 220 12% 13%;
+    --sidebar-accent-foreground: 210 20% 92%;
+    --sidebar-border: 220 12% 14%;
+    --sidebar-ring: 160 84% 39%;
+
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    /*
+     * Tokens derivados: valores que antes estavam hardcoded em componentes e
+     * no tailwind.config. Os numeros sao identicos aos anteriores, so mudaram
+     * de lugar — continuam produzindo o mesmo pixel no tema escuro.
+     */
+    --shadow-color: 0 0% 0%;
+    --shadow-strength: 0.4;
+    --shadow-strength-sm: 0.3;
+
+    --brand-gradient-to: 160 60% 55%;
+    --url-accent: 160 60% 55%;
+
+    --placar-track: 220 12% 11%;
+    --placar-track-meta: 220 12% 13%;
+    --placar-bar-from: 160 84% 30%;
+    --placar-hero-from: 220 13% 10%;
+
+    /* Podio. Equivalentes exatos dos hex antigos #E3C15A / #AEB9C8 / #C08E5E. */
+    --medal-1: 45 71% 62%;
+    --medal-2: 215 19% 73%;
+    --medal-3: 29 44% 56.2%;
+  }
+
+  /*
+   * TEMA CLARO.
+   * Mesma familia de matizes do escuro (220 neutro azulado, 160 esmeralda da
+   * marca, 38/42 ambar, 0 vermelho) para preservar a identidade visual.
+   * A elevacao inverte: no escuro a pagina e o tom mais escuro e o card sobe;
+   * no claro a pagina e cinza e o card sobe para branco puro. Isso da uma
+   * separacao card/pagina de 1.12:1 (contra 1.06:1 no escuro).
+   * Todos os pares texto/fundo foram validados em WCAG AA (>= 4.5:1).
+   * Vem depois na ordem do arquivo, entao com a mesma especificidade vence.
+   */
+  .light {
+    color-scheme: light;
+
+    --background: 214 24% 96%;
+    --foreground: 220 26% 13%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 26% 13%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 26% 13%;
+
+    --primary: 160 84% 26%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 214 26% 92%;
+    --secondary-foreground: 220 14% 34%;
+
+    --muted: 214 26% 93%;
+    --muted-foreground: 220 12% 40%;
+
+    --accent: 38 88% 31%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 70% 42%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 160 84% 26%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 88% 31%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 214 20% 86%;
+    --input: 214 20% 86%;
+    --ring: 160 84% 32%;
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 220 26% 13%;
+    --sidebar-primary: 160 84% 26%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 214 26% 92%;
+    --sidebar-accent-foreground: 220 26% 13%;
+    --sidebar-border: 214 20% 86%;
+    --sidebar-ring: 160 84% 32%;
+
+    /* Sombra colorida e sutil: preto puro a 40% "suja" o tema claro. */
+    --shadow-color: 220 30% 25%;
+    --shadow-strength: 0.12;
+    --shadow-strength-sm: 0.08;
+
+    --brand-gradient-to: 160 70% 34%;
+    --url-accent: 160 84% 26%;
+
+    --placar-track: 214 22% 90%;
+    --placar-track-meta: 214 24% 94%;
+    --placar-bar-from: 160 70% 34%;
+    --placar-hero-from: 214 30% 98%;
+
+    /* Podio escurecido: os metalicos do escuro davam 1.74:1 / 1.99:1 / 2.89:1
+       sobre card branco. Aqui: 5.70:1 / 6.51:1 / 6.83:1. */
+    --medal-1: 40 75% 30%;
+    --medal-2: 214 15% 38%;
+    --medal-3: 25 45% 34%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+  }
+
+  /* Etapa 6 (a11y): foco visivel por teclado em todos os interativos. */
+  a:focus-visible,
+  button:focus-visible,
+  [role="button"]:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .text-gradient-brand {
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--brand-gradient-to)));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .card-glass {
+    @apply bg-card/80 backdrop-blur-xl rounded-2xl border border-border/60 p-6 shadow-subtle;
+  }
+
+  .card-glass-sm {
+    @apply bg-card/80 backdrop-blur-xl rounded-xl border border-border/60 p-4 shadow-subtle-sm;
+  }
+
+  .glow-primary {
+    @apply shadow-glow;
+  }
+
+  .glow-accent {
+    @apply shadow-glow-accent;
+  }
+
+  .input-styled {
+    @apply w-full px-3.5 py-2.5 rounded-xl border border-border bg-background/60 text-foreground text-sm outline-none transition-all duration-200;
+    @apply focus:ring-2 focus:ring-primary/30 focus:border-primary/50;
+  }
+
+  .select-styled {
+    @apply w-full px-3.5 py-2.5 rounded-xl border border-border bg-background/60 text-foreground text-sm outline-none cursor-pointer transition-all duration-200;
+    @apply focus:ring-2 focus:ring-primary/30 focus:border-primary/50;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+  }
+
+  .url-display {
+    @apply font-mono text-sm break-all;
+    color: hsl(var(--url-accent));
+  }
+
+  .step-badge {
+    @apply w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 transition-all duration-300;
+  }
+
+  .step-badge-active {
+    @apply bg-primary text-primary-foreground glow-primary;
+  }
+
+  .step-badge-done {
+    @apply bg-primary/20 text-primary border border-primary/30;
+  }
+
+  .step-badge-pending {
+    @apply bg-secondary text-muted-foreground border border-border;
+  }
+
+  .chip-selectable {
+    @apply px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer;
+  }
+
+  .chip-active {
+    @apply border-2 border-primary bg-primary/10 text-primary glow-primary;
+  }
+
+  .chip-inactive {
+    @apply border border-border bg-background/40 text-muted-foreground hover:border-primary/40 hover:text-foreground;
+  }
+}
+
+/* ============================================================================
+ * NOTIFICACAO DE VENDA (tempo real)
+ * ----------------------------------------------------------------------------
+ * Efeito de borda ("pulse") na tela + card do modelo aprovado (versao 3 / faixa).
+ * Fora de @layer de proposito: sao animacoes utilitarias, nao tokens de tema.
+ *
+ * Variaveis controladas em runtime pelo React:
+ *   --venda-hue : cor do time (hsl sem o wrapper, ex.: "207 60% 51%")
+ *   --venda-pi  : intensidade do efeito (0.45 suave | 0.75 medio | 1 intenso)
+ * ==========================================================================*/
+
+.venda-pulse {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+  --venda-hue: 160 84% 39%;
+  --venda-pi: 0.75;
+}
+
+/* Brilho geral da tela: sobe e desce uma vez. */
+.venda-pulse[data-active="true"] {
+  animation: venda-screen-pulse 1100ms ease-out 1;
+}
+
+@keyframes venda-screen-pulse {
+  0% { box-shadow: inset 0 0 0 0 hsl(var(--venda-hue) / 0); }
+  22% { box-shadow: inset 0 0 calc(120px * var(--venda-pi)) calc(8px * var(--venda-pi)) hsl(var(--venda-hue) / calc(0.55 * var(--venda-pi))); }
+  100% { box-shadow: inset 0 0 0 0 hsl(var(--venda-hue) / 0); }
+}
+
+/* As quatro barras que varrem as bordas da tela. */
+.venda-edge {
+  position: absolute;
+  opacity: 0;
+  background: linear-gradient(
+    90deg,
+    hsl(var(--venda-hue) / 0) 0%,
+    hsl(var(--venda-hue) / calc(0.85 * var(--venda-pi))) 30%,
+    hsl(0 0% 100% / calc(0.9 * var(--venda-pi))) 50%,
+    hsl(var(--venda-hue) / calc(0.85 * var(--venda-pi))) 70%,
+    hsl(var(--venda-hue) / 0) 100%
+  );
+}
+
+.venda-edge.t,
+.venda-edge.b {
+  left: 0;
+  right: 0;
+  height: calc(4px + 4px * var(--venda-pi));
+}
+
+.venda-edge.l,
+.venda-edge.r {
+  top: 0;
+  bottom: 0;
+  width: calc(4px + 4px * var(--venda-pi));
+  background: linear-gradient(
+    180deg,
+    hsl(var(--venda-hue) / 0) 0%,
+    hsl(var(--venda-hue) / calc(0.85 * var(--venda-pi))) 30%,
+    hsl(0 0% 100% / calc(0.9 * var(--venda-pi))) 50%,
+    hsl(var(--venda-hue) / calc(0.85 * var(--venda-pi))) 70%,
+    hsl(var(--venda-hue) / 0) 100%
+  );
+}
+
+.venda-edge.t { top: 0; }
+.venda-edge.b { bottom: 0; }
+.venda-edge.l { left: 0; }
+.venda-edge.r { right: 0; }
+
+.venda-pulse[data-active="true"] .venda-edge {
+  animation: venda-edge-sweep 1100ms ease-out 1;
+}
+
+@keyframes venda-edge-sweep {
+  0% { opacity: 0; filter: blur(0px); }
+  12% { opacity: 1; filter: blur(calc(1px + 2px * var(--venda-pi))); }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Entrada e saida do card. */
+@keyframes venda-card-in {
+  from { opacity: 0; transform: translateX(24px) scale(0.96); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes venda-card-out {
+  from { opacity: 1; transform: translateX(0) scale(1); }
+  to { opacity: 0; transform: translateX(24px) scale(0.96); }
+}
+
+.venda-card-in { animation: venda-card-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.venda-card-out { animation: venda-card-out 260ms ease-in both; }
+
+/* Moedas subindo. */
+@keyframes venda-coin {
+  0% { opacity: 0; transform: translateY(0) rotate(0deg) scale(0.7); }
+  15% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-160px) rotate(320deg) scale(1.05); }
+}
+
+.venda-coin { animation: venda-coin 1400ms ease-out both; }
+
+/* Barra de progresso do tempo restante do card. */
+@keyframes venda-progress {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+.venda-progress { transform-origin: left center; animation: venda-progress linear both; }
+
+/* ---- Dialog central de venda (pop-up por tempo, no meio da tela) ---- */
+
+/* Entrada do dialog: sobe e cresce de baixo, rapido — a venda acabou de acontecer. */
+@keyframes venda-celebra-in {
+  from { opacity: 0; transform: translateY(18px) scale(0.92); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.venda-celebra-in { animation: venda-celebra-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Fundo escurecido atras do dialog. So opacidade: nao bloqueia clique nem foco. */
+@keyframes venda-celebra-fundo {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.venda-celebra-fundo { animation: venda-celebra-fundo 220ms ease-out both; }
+
+/* Respiro do valor: um unico pulso, para o olho ir ao numero primeiro. */
+@keyframes venda-celebra-valor {
+  0% { transform: scale(0.86); }
+  55% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
+.venda-celebra-valor { animation: venda-celebra-valor 620ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Confete: cada peca recebe --dx/--giro/--atraso inline, para nao repetir keyframes. */
+@keyframes venda-confete {
+  0% { opacity: 0; transform: translate3d(0, 0, 0) rotate(0deg); }
+  10% { opacity: 1; }
+  100% { opacity: 0; transform: translate3d(var(--dx, 0px), 62vh, 0) rotate(var(--giro, 540deg)); }
+}
+
+.venda-confete { animation: venda-confete 2600ms cubic-bezier(0.3, 0.7, 0.5, 1) both; }
+
+/* Acessibilidade: quem pediu menos movimento recebe so o card, sem varredura. */
+@media (prefers-reduced-motion: reduce) {
+  .venda-pulse[data-active="true"],
+  .venda-pulse[data-active="true"] .venda-edge,
+  .venda-coin,
+  .venda-card-in,
+  .venda-card-out,
+  .venda-celebra-in,
+  .venda-celebra-fundo,
+  .venda-celebra-valor {
+    animation: none !important;
+  }
+  .venda-pulse[data-active="true"] .venda-edge { opacity: 0; }
+  /* Confete some por completo — nao existe versao discreta de confete. */
+  .venda-confete { display: none !important; }
+}

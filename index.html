@@ -1,0 +1,51 @@
+<!doctype html>
+<!-- lang correto + translate="no" (24/08): o app é todo pt-BR mas declarava
+     lang="en" — o Chrome "detectava" idioma errado e ligava o Google Tradutor,
+     que reescreve os nós de texto da página e faz o React quebrar com
+     NotFoundError removeChild/insertBefore (capturado em gerador_erros_front:
+     tela "Algo deu errado" da Eduarda em /vendas; mesmo mecanismo explica o
+     nome "Eduarda" aparecer "traduzido" como Eduardo). translate=no + meta
+     notranslate desligam a tradução automática nesta página. -->
+<html lang="pt-BR" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="google" content="notranslate" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Qualificador de Leads · ROI</title>
+    <meta name="description" content="Qualificação de leads da ROI Ventures a partir do relatório da Assiny." />
+    <meta name="author" content="ROI Ventures" />
+
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+</head>
+
+  <body>
+    <!--
+      Aplica o tema antes da primeira pintura para evitar flash de tema errado.
+      O next-themes so injeta esse script sozinho no Next.js; num SPA Vite ele
+      roda depois do primeiro paint, entao a leitura do localStorage precisa
+      acontecer aqui, de forma bloqueante. Chave e default espelham o
+      ThemeProvider em src/App.tsx ('roi-theme' / 'dark').
+    -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('roi-theme') || 'dark';
+          if (t === 'system') {
+            t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+          }
+          if (t !== 'light' && t !== 'dark') t = 'dark';
+          document.documentElement.classList.add(t);
+          document.documentElement.style.colorScheme = t;
+        } catch (e) {
+          document.documentElement.classList.add('dark');
+          document.documentElement.style.colorScheme = 'dark';
+        }
+      })();
+    </script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

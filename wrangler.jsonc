@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
+  "name": "qualificador-leads",
+  "compatibility_date": "2026-08-26",
+  "workers_dev": true,
+  "preview_urls": false,
+  // SPA estática: o backend inteiro é Supabase (Edge Functions + Postgres).
+  // Sem worker próprio — os assets bastam.
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}
