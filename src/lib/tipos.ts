@@ -69,6 +69,13 @@ export interface Projeto {
 export interface Importacao {
   id: string
   arquivo: string
+  nome: string | null
+  descricao: string | null
+  tags: string[] | null
+  fonte_importacao_id: string | null
+  regras: Record<string, unknown> | null
+  formato: string | null
+  status: 'pendente' | 'analisado' | 'ingerido' | 'erro'
   projeto_id: string | null
   periodo_ini: string | null
   periodo_fim: string | null
