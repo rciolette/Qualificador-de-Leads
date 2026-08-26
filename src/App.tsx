@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
+import { supabaseConfigurado } from '@/lib/supabase'
 import { AppShell } from '@/components/AppShell'
 import { LoginPage } from '@/pages/LoginPage'
 import { IntegracoesPage } from '@/pages/IntegracoesPage'
@@ -17,7 +18,7 @@ const qc = new QueryClient({
 })
 
 function Protegido() {
-  const { user, carregando, semPapel } = useAuth()
+  const { user, carregando, semPapel, erroPapel } = useAuth()
 
   if (carregando) {
     return (
@@ -27,6 +28,40 @@ function Protegido() {
     )
   }
   if (!user) return <Navigate to="/entrar" replace />
+
+  // o erro mais provável na primeira subida: o PostgREST ainda não expõe o schema
+  if (erroPapel) {
+    const ehSchema = erroPapel.includes('Invalid schema') || erroPapel.includes('PGRST106')
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <Card className="max-w-lg">
+          <CardHeader>
+            <CardTitle className="text-heading text-destructive">
+              {ehSchema ? 'Schema não exposto na API' : 'Não foi possível verificar seu acesso'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-label text-muted-foreground">
+            {ehSchema ? (
+              <>
+                <p>
+                  Você está autenticado, mas o PostgREST não expõe o schema{' '}
+                  <code>qualificador</code> — hoje expõe apenas <code>public</code>,{' '}
+                  <code>graphql_public</code> e <code>dash</code>.
+                </p>
+                <p>
+                  No painel do Supabase: <strong>Settings → API → Exposed schemas</strong>,
+                  adicione <code>qualificador</code>. É o mesmo passo que o schema{' '}
+                  <code>dash</code> já teve; nenhum schema existente sai da lista.
+                </p>
+              </>
+            ) : (
+              <p className="font-mono">{erroPapel}</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   // existe em auth, mas ninguém deu papel no Qualificador: RLS devolveria tudo vazio,
   // o que pareceria "sistema sem dados". Melhor dizer o que realmente aconteceu.
@@ -52,7 +87,36 @@ function Protegido() {
   return <AppShell />
 }
 
+/**
+ * Sem as variáveis de ambiente o app não tem o que fazer — mas tem que dizer isso.
+ * Erro no import derrubaria a página inteira e o usuário veria tela preta.
+ */
+function NaoConfigurado() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <Card className="max-w-lg">
+        <CardHeader>
+          <CardTitle className="text-heading">Aplicação não configurada</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-label text-muted-foreground">
+          <p>
+            Faltam <code>VITE_SUPABASE_URL</code> e <code>VITE_SUPABASE_ANON_KEY</code> no
+            build. Elas são embutidas no bundle em tempo de compilação, não lidas em runtime.
+          </p>
+          <p>
+            Em desenvolvimento: copie <code>.env.example</code> para <code>.env</code>.
+            No build de produção: os valores vêm de <code>.env.production</code>, que é
+            versionado — as duas são públicas por design.
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
 export default function App() {
+  if (!supabaseConfigurado) return <NaoConfigurado />
+
   return (
     <QueryClientProvider client={qc}>
       <AuthProvider>

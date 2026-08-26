@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
-import { supabase } from '@/lib/supabase'
+import { exigirSupabase } from '@/lib/supabase'
 import { buscarPapel } from '@/lib/dados'
 import { temPapelMinimo, type Papel } from '@/lib/tipos'
 
@@ -11,6 +11,8 @@ interface Auth {
   carregando: boolean
   /** true quando o usuário existe em auth mas ninguém deu papel a ele no Qualificador */
   semPapel: boolean
+  /** falha de infra ao ler o papel — não confundir com "não tem papel" */
+  erroPapel: string | null
   pode: (minimo: Papel) => boolean
   entrar: (email: string, senha: string) => Promise<void>
   sair: () => Promise<void>
@@ -21,19 +23,20 @@ const Ctx = createContext<Auth | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [papel, setPapel] = useState<Papel | null>(null)
+  const [erroPapel, setErroPapel] = useState<string | null>(null)
   const [carregando, setCarregando] = useState(true)
 
   useEffect(() => {
     let vivo = true
 
     // o listener é registrado antes do getSession para não perder o primeiro evento
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_evento, s) => {
+    const { data: { subscription } } = exigirSupabase().auth.onAuthStateChange((_evento, s) => {
       if (!vivo) return
       setSession(s)
       if (!s) setPapel(null)
     })
 
-    supabase.auth.getSession().then(({ data }) => {
+    exigirSupabase().auth.getSession().then(({ data }) => {
       if (vivo) {
         setSession(data.session)
         if (!data.session) setCarregando(false)
@@ -44,12 +47,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    if (!session?.user) { setPapel(null); setCarregando(false); return }
+    if (!session?.user) { setPapel(null); setErroPapel(null); setCarregando(false); return }
     let vivo = true
     setCarregando(true)
     buscarPapel(session.user.id)
-      .then((p) => { if (vivo) setPapel(p) })
-      .catch(() => { if (vivo) setPapel(null) })
+      .then((p) => { if (vivo) { setPapel(p); setErroPapel(null) } })
+      // ler o papel e falhar é diferente de ler e não achar: um é infra, o outro
+      // é permissão. Confundir os dois manda o usuário resolver o problema errado.
+      .catch((e: Error) => { if (vivo) { setPapel(null); setErroPapel(e.message) } })
       .finally(() => { if (vivo) setCarregando(false) })
     return () => { vivo = false }
   }, [session?.user?.id])
@@ -59,14 +64,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     session,
     papel,
     carregando,
-    semPapel: Boolean(session?.user) && !carregando && papel === null,
+    erroPapel,
+    semPapel: Boolean(session?.user) && !carregando && papel === null && erroPapel === null,
     pode: (minimo: Papel) => temPapelMinimo(papel, minimo),
     entrar: async (email, senha) => {
-      const { error } = await supabase.auth.signInWithPassword({ email, password: senha })
+      const { error } = await exigirSupabase().auth.signInWithPassword({ email, password: senha })
       if (error) throw error
     },
-    sair: async () => { await supabase.auth.signOut() },
-  }), [session, papel, carregando])
+    sair: async () => { await exigirSupabase().auth.signOut() },
+  }), [session, papel, erroPapel, carregando])
 
   return <Ctx.Provider value={valor}>{children}</Ctx.Provider>
 }

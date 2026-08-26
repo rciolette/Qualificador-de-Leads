@@ -1,4 +1,4 @@
-import { supabase, FUNCTIONS_URL } from './supabase'
+import { exigirSupabase, supabase, FUNCTIONS_URL } from './supabase'
 import type {
   Execucao, Frescor, Importacao, Integracao, Papel, Projeto,
   ResultadoCredencial, ResultadoSync,
@@ -6,7 +6,7 @@ import type {
 
 /** Chama uma Edge Function do Qualificador com o JWT da sessão atual. */
 async function chamarFuncao<T>(nome: string, corpo: unknown): Promise<T> {
-  const { data: { session } } = await supabase.auth.getSession()
+  const { data: { session } } = await exigirSupabase().auth.getSession()
   if (!session) throw new Error('Sessão expirada. Entre de novo.')
 
   const r = await fetch(`${FUNCTIONS_URL}/${nome}`, {
@@ -25,8 +25,7 @@ async function chamarFuncao<T>(nome: string, corpo: unknown): Promise<T> {
 // ------------------------------------------------------------------ perfil
 
 export async function buscarPapel(userId: string): Promise<Papel | null> {
-  const { data, error } = await supabase
-    .from('user_profiles').select('papel').eq('user_id', userId).maybeSingle()
+  const { data, error } = await exigirSupabase().from('user_profiles').select('papel').eq('user_id', userId).maybeSingle()
   if (error) throw error
   return (data?.papel as Papel) ?? null
 }
@@ -34,20 +33,19 @@ export async function buscarPapel(userId: string): Promise<Papel | null> {
 // ------------------------------------------------------------- integrações
 
 export async function listarIntegracoes(): Promise<Integracao[]> {
-  const { data, error } = await supabase.from('integracao').select('*').order('tipo')
+  const { data, error } = await exigirSupabase().from('integracao').select('*').order('tipo')
   if (error) throw error
   return data ?? []
 }
 
 export async function listarFrescor(): Promise<Frescor[]> {
-  const { data, error } = await supabase.from('v_frescor_integracoes').select('*')
+  const { data, error } = await exigirSupabase().from('v_frescor_integracoes').select('*')
   if (error) throw error
   return data ?? []
 }
 
 export async function listarExecucoes(limite = 30): Promise<Execucao[]> {
-  const { data, error } = await supabase
-    .from('integracao_execucao').select('*')
+  const { data, error } = await exigirSupabase().from('integracao_execucao').select('*')
     .order('executado_em', { ascending: false }).limit(limite)
   if (error) throw error
   return data ?? []
@@ -70,15 +68,13 @@ export function sincronizar(fonte: string, limite = 100, maxIdadeHoras = 24) {
 // ---------------------------------------------------------------- catálogo
 
 export async function listarProjetos(): Promise<Projeto[]> {
-  const { data, error } = await supabase
-    .from('projeto').select('*').order('organizacao_assiny').order('nome_assiny')
+  const { data, error } = await exigirSupabase().from('projeto').select('*').order('organizacao_assiny').order('nome_assiny')
   if (error) throw error
   return data ?? []
 }
 
 export async function listarImportacoes(limite = 20): Promise<Importacao[]> {
-  const { data, error } = await supabase
-    .from('importacao').select('*')
+  const { data, error } = await exigirSupabase().from('importacao').select('*')
     .order('importado_em', { ascending: false }).limit(limite)
   if (error) throw error
   return data ?? []
