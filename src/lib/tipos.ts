@@ -100,3 +100,17 @@ export interface ResultadoCredencial {
   substituida: boolean
   gravada_em: string
 }
+
+/** Resposta de qualificador-importar-assiny. */
+export interface ResultadoImportacao {
+  importacao_id: string
+  arquivo: string
+  itens_no_arquivo: number
+  transacoes: number
+  transacoes_novas: number
+  transacoes_ja_havia: number
+  sem_identidade: number
+  pessoas_criadas: number
+  colunas_ignoradas?: string[]
+  duracao_ms?: number
+}
