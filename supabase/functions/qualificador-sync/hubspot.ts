@@ -152,6 +152,15 @@ export const hubspot: Adaptador = {
           tabela: 'crm_snapshot',
           pessoa_id: alvo.pessoa_id,
           hubspot_id: contato.id,
+          // guardamos as properties cruas: o portal tem 1.039 no contato e nenhuma
+          // lista fixa em código sobrevive ao primeiro campo novo que a operação criar
+          props: p,
+          props_deals: Object.fromEntries(
+            (porContato.get(contato.id) ?? [])
+              .map((id) => negocios.get(id))
+              .filter((d): d is NegocioHs => Boolean(d))
+              .map((d) => [d.id, d.properties]),
+          ),
           // NULL aqui significa "nunca preencheu formulário", não "ruim" (PRD 7.5)
           classificacao_leadscore: p.classificacao_leadscore ?? null,
           leadscore: comoNumero(p.leadscore),

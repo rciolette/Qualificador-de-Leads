@@ -21,6 +21,10 @@ export interface GravacaoCrm {
   tabela: 'crm_snapshot'
   pessoa_id: string
   hubspot_id: string | null
+  /** properties do contato como vieram — habilita filtrar por campo nativo */
+  props: Record<string, unknown> | null
+  /** properties dos negócios, uma entrada por deal */
+  props_deals: Record<string, unknown> | null
   classificacao_leadscore: string | null
   leadscore: number | null
   produtos_ativos: string[] | null

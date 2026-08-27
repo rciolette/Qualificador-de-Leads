@@ -212,18 +212,20 @@ async function gravar(
           case 'crm_snapshot':
             await tx`
               insert into qualificador.crm_snapshot (pessoa_id, classificacao_leadscore,
-                leadscore, produtos_ativos, produtos_historico, econt, deals, disparo, sync_em)
+                leadscore, produtos_ativos, produtos_historico, econt, deals, disparo,
+                props, props_deals, sync_em)
               values (${g.pessoa_id}::uuid, ${g.classificacao_leadscore}, ${g.leadscore},
                 ${g.produtos_ativos}, ${g.produtos_historico},
-                ${JSON.stringify(g.econt)}::jsonb, ${JSON.stringify(g.deals)}::jsonb,
-                ${JSON.stringify(g.disparo)}::jsonb, now())
+                ${tx.json(g.econt)}, ${tx.json(g.deals)}, ${tx.json(g.disparo)},
+                ${tx.json(g.props ?? {})}, ${tx.json(g.props_deals ?? {})}, now())
               on conflict (pessoa_id) do update set
                 classificacao_leadscore = excluded.classificacao_leadscore,
                 leadscore = excluded.leadscore,
                 produtos_ativos = excluded.produtos_ativos,
                 produtos_historico = excluded.produtos_historico,
                 econt = excluded.econt, deals = excluded.deals,
-                disparo = excluded.disparo, sync_em = excluded.sync_em`
+                disparo = excluded.disparo, props = excluded.props,
+                props_deals = excluded.props_deals, sync_em = excluded.sync_em`
             if (g.hubspot_id) {
               // o hubspot_id é unique: se já pertence a outra pessoa, não sobrescreve
               await tx`
@@ -241,7 +243,7 @@ async function gravar(
                 ultimo_acesso, cadastro, niveis, dados, coletado_em)
               values (${g.pessoa_id}::uuid, ${g.plataforma}::qualificador.area_membros,
                 ${g.aulas_concluidas}, ${g.ultimo_acesso}::date, ${g.cadastro}::date,
-                ${g.niveis}, ${JSON.stringify(g.dados)}::jsonb, now())
+                ${g.niveis}, ${tx.json(g.dados)}, now())
               on conflict (pessoa_id, plataforma) do update set
                 aulas_concluidas = excluded.aulas_concluidas,
                 ultimo_acesso = excluded.ultimo_acesso,
