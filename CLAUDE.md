@@ -279,6 +279,19 @@ do dado exclui, ou não.
   Na primeira vez que rodei o certo, ele achou dois erros reais que o outro
   deixava passar. E `node_modules/` já apareceu vazio no meio da sessão (outra
   sessão ou o sandbox): `npm install` antes de acusar o build.
+- **`qualificador-espelhar` APAGA a tabela antes de reconstruir.** A primeira
+  invocação faz `delete from espelho_<fonte>` — "espelho é foto, não histórico".
+  A consequência é que **interromper no meio deixa o espelho parcial**, e o
+  cruzamento cai junto, sem erro nenhum. Fechar a aba, recarregar a página ou
+  navegar para outra rota mata o laço. Antes de disparar um espelhamento grande
+  (MemberClass leva ~8 min para 11.200 alunos), avise que a aba não pode ser
+  mexida — ou torne a operação retomável sem apagar.
+- **O sync do HubSpot não registra `em_andamento`.** Ele só grava a linha em
+  `integracao_execucao` ao terminar o lote, então nada consegue saber que ele
+  está rodando pela tabela. Isso quebra o critério 5 da Tarefa 0-B ("toda
+  execução escreve linha, inclusive as em andamento") e obrigou `ocupadoPor()`
+  a inferir pelo `crm_snapshot.sync_em` recente. **Dívida:** fazer o sync
+  registrar no início, como `qualificador-espelhar` faz.
 - **Um handler que muda N coisas precisa de UMA chamada de estado.** Escolher o
   campo de uma condição mudava condição, coluna e rótulo em três chamadas
   seguidas de `aoAtualizar`, cada uma montando o objeto a partir do render
