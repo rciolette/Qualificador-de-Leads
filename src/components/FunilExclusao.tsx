@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Lock, Users } from 'lucide-react'
-import { pessoasDaEtapa, type Etapa, type Iniciativa, type LinhaFunil } from '@/lib/iniciativas'
-import { formatarNumero } from '@/lib/dados'
+import {
+  colunasDe, pessoasDaEtapa, resolverColunas,
+  type Etapa, type Iniciativa, type LinhaFunil,
+} from '@/lib/iniciativas'
+import { formatarNumero, mostrar } from '@/lib/dados'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -101,6 +104,14 @@ function QuemSaiu({
   aoFechar: () => void
 }) {
   const ehFinal = linha?.ordem === 999
+  const ids = colunasDe(etapas)
+  const colunas = useQuery({
+    queryKey: ['colunas-resolvidas', ids],
+    queryFn: () => resolverColunas(ids),
+    enabled: ids.length > 0,
+  })
+  const trazidas = colunas.data ?? []
+
   const pessoas = useQuery({
     queryKey: ['quem-saiu', linha?.ordem, etapas, iniciativa.pesos],
     queryFn: () => pessoasDaEtapa(etapas, iniciativa, ehFinal ? null : linha!.ordem, 300),
@@ -132,6 +143,9 @@ function QuemSaiu({
                   <TableHead className="text-right">Compras</TableHead>
                   <TableHead className="text-right">Valor</TableHead>
                   <TableHead className="text-right">Score</TableHead>
+                  {trazidas.map((c) => (
+                    <TableHead key={c.id}>{c.rotulo}</TableHead>
+                  ))}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -160,6 +174,11 @@ function QuemSaiu({
                       {Number(p.score ?? 0).toFixed(1)}
                       <span className="ml-1 text-muted-foreground">{String(p.faixa ?? '')}</span>
                     </TableCell>
+                    {trazidas.map((c) => (
+                      <TableCell key={c.id} className="max-w-[220px] truncate text-label">
+                        {mostrar((p.extras as Record<string, unknown> | null)?.[c.id])}
+                      </TableCell>
+                    ))}
                   </TableRow>
                 ))}
               </TableBody>

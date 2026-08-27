@@ -3,7 +3,7 @@
 Instruções para qualquer sessão de agente neste repositório.
 **Este arquivo é o ponto de sincronia entre sessões.** Quem terminar uma tarefa
 atualiza a seção 3 aqui antes de sair.
-Última atualização: 27/08/2026, 23h10.
+Última atualização: 28/08/2026, 00h20.
 
 ## 0. Protocolo entre sessões (leia primeiro)
 
@@ -59,7 +59,7 @@ O RBAC é próprio: `qualificador.user_profiles` (papéis `leitor` / `operador` 
 `gestao`). **Não** herda de `public.profiles` nem usa `public.is_gestao()`.
 Ter conta no Gerador de Links não dá acesso aqui.
 
-## 3. Estado real (27/08/2026, 23h10)
+## 3. Estado real (28/08/2026, 00h20)
 
 | Fase / tarefa | Entrega | Situação |
 |---|---|---|
@@ -69,18 +69,19 @@ Ter conta no Gerador de Links não dá acesso aqui.
 | Tarefa 0-B | Espelho de MemberKit/MemberClass/Sellflux | **rodou** (outra sessão): MK 1.439 · MC 11.197 · SF 19.949 |
 | Tarefa 1 | Motor de iniciativas: filtros, funil, 8 eixos de score | **entregue**; 6 de 8 aceites passaram, 2 barrados por falta de dado |
 | Tarefa 2 | Funil de etapas encadeadas (`filtrar_em_etapas`) | **entregue com tela** — construtor, funil ao vivo, XLSX |
+| Tarefa 2 · fluxo guiado | itens (1) colunas no resultado e (4) modelo sem gerar lista | **entregues**; (2) e (3) aguardam desenho |
 | Fase 3 | Métricas e saúde de dados | **entregue** — `/saude-dos-dados` com `v_saude_dados` e `v_panorama` |
 | Fase 5 | Interface | completa: + `/iniciativas`, `/iniciativas/nova`, `/listas`, `/saude-dos-dados` |
 | Fase 6 | Ciclo fechado | não iniciada |
 
-**Tabelas e volume (27/08 23h):** `pessoa` 1.293 · `pessoa_identificador` 5.197 ·
-`transacao` 1.302 · `crm_snapshot` 935 · `espelho_sellflux` 19.949 ·
+**Tabelas e volume (28/08 00h):** `pessoa` 1.293 · `pessoa_identificador` 5.197 ·
+`transacao` 1.302 · `crm_snapshot` 1.123 · `espelho_sellflux` 19.949 ·
 `espelho_memberclass` 11.197 · `espelho_memberkit` 1.439 ·
-`saude_disparo` 783 · `engajamento` 56 · `staging_assiny` 1.311 ·
+`saude_disparo` 1.237 · `engajamento` 380 · `staging_assiny` 1.311 ·
 `staging_generico` 1.286 · `lista_item` 133 · `campo_filtravel` 42 ·
 `recorte` 9 · `projeto` 9 · `perfil_peso` 7 · `integracao` 5 ·
 `user_profiles` 4 · `importacao` 3 · `integracao_execucao` 36 ·
-`fonte_importacao` 1 · `iniciativa` 1 · `lista` 1 ·
+`fonte_importacao` 1 · `iniciativa` 2 · `lista` 2 · `modelo_fluxo` 1 ·
 **vazias:** `disparo_registro`, `participacao`, `documento`.
 
 **A primeira lista existe:** 133 pessoas, iniciativa "Corujão · recuperar
@@ -93,7 +94,8 @@ negócio em IS/AE → 5 com E-cont → **133**.
 `credencial_salvar` / `credencial_ler` · `registrar_execucao` /
 `finalizar_execucao` · `casar_espelho` · `reconciliar` (+ `_memberkit`,
 `_memberclass`, `_sellflux`) · `avaliar` · `aplicar_pesos` · `faixa_de` ·
-`chave_email` / `chave_documento` / `chave_telefone`.
+`chave_email` / `chave_documento` / `chave_telefone` · `resolver_colunas` /
+`valor_do_campo` / `extrair_colunas`.
 
 **Edge Functions no ar:** `qualificador-credencial-salvar` ·
 `qualificador-sync` (HubSpot + teste de conexão das 4) · `qualificador-espelhar` ·
@@ -107,10 +109,13 @@ ponta no ar em `docs/telas-iniciativas.md` — 8 de 8 itens, zero erro HTTP.
 e-mail, 25 por telefone) · MemberClass 324 · MemberKit 56. Todos por e-mail na
 prática — ver a armadilha da Sellflux na seção 5.
 
-**Presas agora:** as execuções 35 (memberclass) e 36 (sellflux) estão em
-`em_andamento` desde 01:30 e 01:46 UTC — estouraram o tempo da Edge Function sem
-chamar `finalizar_execucao`. O dado entrou; a reconciliação da MemberClass não
-rodou (`engajamento` tem só as 56 do MemberKit). São de outra sessão.
+**A MemberClass reconciliou.** `engajamento` tem 380 (324 MemberClass + 56
+MemberKit) e `saude_disparo` 1.237 — 96% da base. Nenhuma execução presa.
+Como filtro, a MemberClass agora sustenta: 219 pessoas com 1+ aula, 188 com 3+.
+
+**Publicado em 28/08 00h20** (Version `be987f5a`): as colunas trazidas pelo funil
+chegam na prévia e no XLSX, e o fluxo pode ser salvo como modelo sem gerar lista.
+Ver `docs/tarefa-2-colunas-e-modelos.md` — 10 de 10 aceites.
 
 ## 3b. A regra que a Tarefa 0-B estabeleceu
 
@@ -139,6 +144,14 @@ acontece em SQL (`qualificador.reconciliar`). Só o HubSpot fica em
    Sellflux estouraram; precisam retomar de onde pararam, não recomeçar.
 5. **Ler `divisao_times`.** Hoje toda a lista cai em `prioridade_times[1]` — foi
    por isso que a lista de teste saiu inteira como "IS".
+5b. **Tarefa 2, itens (2) e (3)** — múltiplas plataformas por etapa com
+   `qualquer uma` / `todas`, e de-para entre plataformas declarado pelo usuário.
+   São mudança de formato no motor (`campo_bate` passa a receber uma lista de
+   condições com combinador). O Raphael pediu **o desenho antes do código**.
+   O lugar do de-para já existe: `modelo_fluxo.de_para`, hoje vazio.
+5c. **O fluxo guiado ainda não é o caminho principal.** As 6 telas continuam
+   irmãs na nav e a raiz cai em `/integracoes`. O funil também não começa por
+   upload: `filtrar_em_etapas` parte de `v_pessoa_completa`, já reconciliada.
 6. Decidir `ECONT CONTABILIDADE DO ECOMMERCE` (2.370 transações fora do catálogo,
    hoje bloqueia a importação) e a `area_membros` de `ECONT BH`.
 7. Decidir qual escala de classificação manda: `classificacao_leadscore` (5),
@@ -184,6 +197,14 @@ do dado exclui, ou não.
   Postgres ao recriar função. Foi assim que `credencial_ler` — que devolve o token
   do HubSpot em texto puro — voltou a ser executável por `authenticated` depois de
   a migration 10 tê-la revogado. **Revogar depois de cada replace não é opcional.**
+- **Rótulo de campo não é único no catálogo.** "Dias sem acessar" existe na
+  MemberClass e no MemberKit. Ao expor rótulos como cabeçalho de coluna, os dois
+  saíam iguais e ninguém sabia qual era qual. `resolver_colunas` qualifica o
+  repetido com a plataforma — e a **tela chama a mesma função**, em vez de ler
+  `campo_filtravel` direto, senão o cabeçalho da prévia não bate com o do arquivo.
+- **`npm run build` é `vite build` e NÃO faz typecheck.** Para conferir tipos,
+  `./node_modules/.bin/tsc --noEmit` à mão. E `node_modules/` já apareceu vazio no
+  meio da sessão (outra sessão ou o sandbox): `npm install` antes de acusar o build.
 - **Revogar de `authenticated` só vale para função `SECURITY DEFINER`.** Numa
   função `INVOKER` a revogação quebra quem chama: a migration 41 tirou
   `campo_bate` de `authenticated` por zelo, e como `filtrar_em_etapas` é INVOKER,
@@ -258,5 +279,7 @@ Nomear sempre `qualificador_AAAAMMDD_NN_descricao`, com `NN` conferido em
 - `docs/fase-2.md` — integrações
 - `docs/tarefa-0b.md` — por que as três fontes pequenas não cruzavam nada
 - `docs/telas-iniciativas.md` — as telas do motor, o aceite no ar e os 3 defeitos
+- `docs/tarefa-2-fluxo-guiado.md` — a especificação do fluxo guiado (4 decisões fechadas)
+- `docs/tarefa-2-colunas-e-modelos.md` — itens (1) e (4) da spec, entregues
 - Projeto Claude "Qualificador de Leads" → `claude/mapa-apis-v1.md` (as 4 APIs) e
   `claude/estado-do-projeto.md` (espelho desta seção 3, para quem não abre o repo)

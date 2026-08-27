@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useMutation, useQuery } from '@tanstack/react-query'
-import { AlertTriangle, Save, Sparkles, Wand2 } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { AlertTriangle, BookmarkPlus, Save, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { TituloPagina } from '@/components/AppShell'
 import { ConstrutorEtapas } from '@/components/ConstrutorEtapas'
 import { FunilExclusao } from '@/components/FunilExclusao'
 import {
-  calcularFunil, gerarLista, listarPerfis, listarRecortes, salvarIniciativa,
-  EIXOS, type Etapa, type Iniciativa, type LinhaFunil,
+  apagarModelo, calcularFunil, colunasDe, gerarLista, listarModelos, listarPerfis,
+  listarRecortes, salvarIniciativa, salvarModelo,
+  EIXOS, type Etapa, type Iniciativa, type LinhaFunil, type ModeloFluxo,
 } from '@/lib/iniciativas'
 import { formatarNumero } from '@/lib/dados'
 import type { TimeComercial, TipoIniciativa } from '@/lib/tipos'
@@ -30,6 +31,7 @@ const TIMES: TimeComercial[] = ['IS', 'AE', 'ECONT']
 
 export function IniciativaNovaPage() {
   const navegar = useNavigate()
+  const qc = useQueryClient()
   const [nome, setNome] = useState('')
   const [tipo, setTipo] = useState<TipoIniciativa>('corujao')
   const [objetivo, setObjetivo] = useState('')
@@ -42,6 +44,7 @@ export function IniciativaNovaPage() {
 
   const perfis = useQuery({ queryKey: ['perfis'], queryFn: listarPerfis })
   const recortes = useQuery({ queryKey: ['recortes'], queryFn: listarRecortes })
+  const modelos = useQuery({ queryKey: ['modelos'], queryFn: listarModelos })
 
   const config = useMemo(() => ({
     pesos, times, anti_fadiga_dias: antiFadiga, excluir_perdido_dias: perdidoDias,
@@ -76,6 +79,40 @@ export function IniciativaNovaPage() {
     },
     onError: (e: Error) => toast.error('Não foi possível gerar', { description: e.message }),
   })
+
+  /**
+   * Salvar o fluxo não gera lista. Antes, guardar uma receita obrigava a produzir
+   * uma lista descartável — a iniciativa só nascia junto com ela.
+   */
+  const guardar = useMutation({
+    mutationFn: () => salvarModelo({
+      nome: nome.trim() || 'Modelo sem nome',
+      descricao: objetivo.trim() || null,
+      etapas, pesos, config,
+    }),
+    onSuccess: (m) => {
+      toast.success(`Modelo "${m.nome}" salvo`, {
+        description: `${etapas.length} etapa(s) · ${colunasDe(etapas).length} coluna(s). ` +
+          'Nenhuma lista foi gerada.',
+      })
+      qc.invalidateQueries({ queryKey: ['modelos'] })
+    },
+    onError: (e: Error) => toast.error('Não foi possível salvar', { description: e.message }),
+  })
+
+  function carregarModelo(m: ModeloFluxo) {
+    setNome(m.nome)
+    setEtapas(m.etapas ?? [])
+    setPesos(m.pesos ?? {})
+    if (m.descricao) setObjetivo(m.descricao)
+    const c = (m.config ?? {}) as Record<string, unknown>
+    if (Array.isArray(c.times)) setTimes(c.times as TimeComercial[])
+    if (typeof c.anti_fadiga_dias === 'number') setAntiFadiga(c.anti_fadiga_dias)
+    if (typeof c.excluir_perdido_dias === 'number') setPerdidoDias(c.excluir_perdido_dias)
+    toast.info(`Modelo "${m.nome}" carregado`, {
+      description: 'Ajuste o que quiser — salvar de novo com o mesmo nome sobrescreve.',
+    })
+  }
 
   function aplicarPerfil(slug: string) {
     const p = perfis.data?.find((x) => x.slug === slug)
@@ -152,6 +189,41 @@ export function IniciativaNovaPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* modelos salvos pelo usuário — diferente dos recortes, que são seed */}
+          {(modelos.data ?? []).length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-heading">
+                  <BookmarkPlus className="h-4 w-4" /> Meus modelos
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-2">
+                {(modelos.data ?? []).map((m) => (
+                  <span key={m.id}
+                    className="flex items-center gap-1 rounded-lg border border-border pl-3 pr-1">
+                    <button onClick={() => carregarModelo(m)}
+                      className="py-1.5 text-label hover:text-primary">
+                      {m.nome}
+                      <span className="ml-1.5 text-micro text-muted-foreground">
+                        {(m.etapas ?? []).length} etapa(s)
+                      </span>
+                    </button>
+                    <button
+                      onClick={async () => {
+                        await apagarModelo(m.id)
+                        qc.invalidateQueries({ queryKey: ['modelos'] })
+                        toast.success(`Modelo "${m.nome}" apagado`)
+                      }}
+                      className="p-1 text-muted-foreground hover:text-destructive"
+                      aria-label={`Apagar ${m.nome}`}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </span>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           {/* recortes prontos */}
           <Card>
@@ -273,6 +345,16 @@ export function IniciativaNovaPage() {
                   ? 'Gerando…'
                   : `Gerar lista com ${formatarNumero(final)}`}
               </Button>
+
+              <Button variant="outline" className="mt-2 w-full gap-2"
+                disabled={etapas.length === 0 || guardar.isPending}
+                onClick={() => guardar.mutate()}>
+                <BookmarkPlus className="h-4 w-4" />
+                {guardar.isPending ? 'Salvando…' : 'Salvar como modelo'}
+              </Button>
+              <p className="mt-1.5 text-center text-micro text-muted-foreground">
+                Guarda etapas, colunas e pesos. Não gera lista.
+              </p>
               {times.length === 0 && (
                 <p className="mt-2 text-center text-micro text-muted-foreground">
                   Escolha ao menos um time.

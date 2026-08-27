@@ -159,3 +159,14 @@ export function formatarDuracao(ms: number | null | undefined): string {
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`
   return `${Math.floor(ms / 60_000)} min ${Math.round((ms % 60_000) / 1000)} s`
 }
+
+/**
+ * Um valor vindo do jsonb pode ser lista, booleano ou nulo. A prévia na tela e o
+ * xlsx usam esta mesma regra, para o que a pessoa vê ser o que sai no arquivo.
+ */
+export function mostrar(v: unknown): string {
+  if (v === null || v === undefined) return '—'
+  if (Array.isArray(v)) return v.length ? v.join(' · ') : '—'
+  if (typeof v === 'boolean') return v ? 'sim' : 'não'
+  return String(v)
+}

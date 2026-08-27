@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronDown, ChevronUp, GripVertical, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Columns3, GripVertical, Plus, Trash2 } from 'lucide-react'
 import {
   listarCampos, valoresDe, OPERADORES, SEM_VALOR,
   type CampoFiltravel, type Etapa,
@@ -40,7 +40,7 @@ export function ConstrutorEtapas({
   function adicionar() {
     aoMudar([...etapas, {
       id: novoId(), rotulo: '', fonte: '', campo: '',
-      operador: '', valor: undefined, ativa: true,
+      operador: '', valor: undefined, ativa: true, colunas: [],
     }])
   }
 
@@ -168,6 +168,11 @@ function CartaoEtapa({
                   operador: novo?.operadores[0] ?? '',
                   valor: undefined,
                   rotulo: etapa.rotulo || (novo?.rotulo ?? ''),
+                  // quem filtra por "aulas assistidas" quase sempre quer ver o
+                  // número na planilha. Entra sozinho; dá para tirar no seletor.
+                  colunas: novo && !(etapa.colunas ?? []).includes(novo.id)
+                    ? [...(etapa.colunas ?? []), novo.id]
+                    : etapa.colunas,
                 })
               }}
             >
@@ -271,7 +276,89 @@ function CartaoEtapa({
             onCheckedChange={(v) => aoAtualizar({ manter_sem_dado: v })}
           />
         </label>
+
+        <ColunasTrazidas
+          etapa={etapa}
+          campos={campos}
+          porGrupo={porGrupo}
+          aoAtualizar={aoAtualizar}
+        />
       </CardContent>
     </Card>
+  )
+}
+
+/**
+ * As colunas que esta etapa traz para o resultado. Enriquecer não é só deixar de
+ * excluir quem não tem o dado: o que foi consultado aqui precisa chegar na tela e
+ * no arquivo. Sem isto, o usuário filtra por leadscore e não vê o leadscore.
+ */
+function ColunasTrazidas({
+  etapa, campos, porGrupo, aoAtualizar,
+}: {
+  etapa: Etapa
+  campos: CampoFiltravel[]
+  porGrupo: Map<string, CampoFiltravel[]>
+  aoAtualizar: (m: Partial<Etapa>) => void
+}) {
+  const [aberto, setAberto] = useState(false)
+  const escolhidas = etapa.colunas ?? []
+
+  function alternar(id: string) {
+    aoAtualizar({
+      colunas: escolhidas.includes(id)
+        ? escolhidas.filter((x) => x !== id)
+        : [...escolhidas, id],
+    })
+  }
+
+  return (
+    <div className="rounded-lg border border-border">
+      <button
+        onClick={() => setAberto(!aberto)}
+        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
+      >
+        <span className="flex items-center gap-2 text-label">
+          <Columns3 className="h-3.5 w-3.5 text-muted-foreground" />
+          Colunas que esta etapa traz
+          {escolhidas.length > 0 && (
+            <Badge variant="secondary">{escolhidas.length}</Badge>
+          )}
+        </span>
+        {aberto ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+      </button>
+
+      {escolhidas.length > 0 && !aberto && (
+        <div className="flex flex-wrap gap-1 px-3 pb-2">
+          {escolhidas.map((id) => (
+            <Badge key={id} variant="outline" className="font-normal">
+              {campos.find((c) => c.id === id)?.rotulo ?? id}
+            </Badge>
+          ))}
+        </div>
+      )}
+
+      {aberto && (
+        <div className="max-h-64 overflow-y-auto border-t border-border p-3">
+          {[...porGrupo.entries()].map(([grupo, lista]) => (
+            <div key={grupo} className="mb-3 last:mb-0">
+              <p className="mb-1 text-micro uppercase text-muted-foreground">{grupo}</p>
+              {lista.map((c) => (
+                <label key={c.id}
+                  className="flex cursor-pointer items-center gap-2 py-0.5 text-label">
+                  <input type="checkbox" checked={escolhidas.includes(c.id)}
+                    onChange={() => alternar(c.id)} className="accent-primary" />
+                  <span className="truncate">{c.rotulo}</span>
+                </label>
+              ))}
+            </div>
+          ))}
+          <p className="pt-1 text-micro text-muted-foreground">
+            Vale para a prévia e para o arquivo exportado. Etapa desligada não
+            contribui com coluna nenhuma.
+          </p>
+        </div>
+      )}
+    </div>
   )
 }

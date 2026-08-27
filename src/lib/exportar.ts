@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx'
 import { exigirSupabase } from './supabase'
+import { mostrar } from './dados'
 
 /**
  * O arquivo é regerado do banco a cada pedido — nunca guardamos o xlsx.
@@ -11,7 +12,7 @@ export async function baixarLista(listaId: string, nomeBase: string) {
 
   const { data: lista, error: e1 } = await sb
     .from('lista')
-    .select('id, nome, gerada_em, total, por_time, funil, iniciativa_id')
+    .select('id, nome, gerada_em, total, por_time, funil, colunas, iniciativa_id')
     .eq('id', listaId).single()
   if (e1) throw e1
 
@@ -20,7 +21,7 @@ export async function baixarLista(listaId: string, nomeBase: string) {
 
   const { data: itens, error: e2 } = await sb
     .from('lista_item')
-    .select('pessoa_id, time, score, faixa, motivo, sobreposicao, resultado')
+    .select('pessoa_id, time, score, faixa, motivo, sobreposicao, resultado, extras')
     .eq('lista_id', listaId).order('score', { ascending: false })
   if (e2) throw e2
 
@@ -39,8 +40,14 @@ export async function baixarLista(listaId: string, nomeBase: string) {
     }
   }
 
+  // As colunas que o usuário trouxe pelo caminho, congeladas na geração da lista.
+  // O cabeçalho vem resolvido do banco: se o campo for renomeado depois, o arquivo
+  // antigo continua legível.
+  const trazidas = (lista.colunas ?? []) as { id: string; rotulo: string }[]
+
   const linhas = (itens ?? []).map((it) => {
     const p = pessoas.get(it.pessoa_id) ?? {}
+    const extras = (it.extras ?? {}) as Record<string, unknown>
     return {
       'Nome': p.nome ?? '',
       'E-mail': p.email ?? '',
@@ -63,6 +70,8 @@ export async function baixarLista(listaId: string, nomeBase: string) {
       // a coluna que o blueprint exige: em quantas outras iniciativas abertas a pessoa caiu
       'Sobreposição': Array.isArray(it.sobreposicao) ? it.sobreposicao.length : 0,
       'Resultado': it.resultado,
+      // as colunas do funil vão por último, na ordem em que ele as trouxe
+      ...Object.fromEntries(trazidas.map((c) => [c.rotulo, mostrar(extras[c.id])])),
     }
   })
 
@@ -79,6 +88,8 @@ export async function baixarLista(listaId: string, nomeBase: string) {
     ...Object.entries(lista.por_time ?? {}).map(([t, n]) => ({ Campo: `Time ${t}`, Valor: n })),
     { Campo: 'Anti-fadiga (dias)', Valor: iniciativa?.anti_fadiga_dias ?? '' },
     { Campo: 'Excluir perdido há (dias)', Valor: iniciativa?.excluir_perdido_dias ?? '' },
+    { Campo: 'Colunas trazidas pelo funil',
+      Valor: trazidas.length ? trazidas.map((c) => c.rotulo).join(' · ') : 'nenhuma' },
   ]), 'Resumo')
 
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(linhas), 'Lista final')

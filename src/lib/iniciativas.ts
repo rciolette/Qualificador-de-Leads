@@ -17,6 +17,37 @@ export interface Etapa {
    * true            — a etapa é REFINO: quem não tem o dado segue sem ser julgado.
    */
   manter_sem_dado?: boolean
+  /**
+   * Ids de `campo_filtravel` que esta etapa TRAZ para o resultado.
+   * Enriquecer não é só deixar de excluir: as colunas consultadas aqui chegam
+   * na tela e no arquivo exportado.
+   */
+  colunas?: string[]
+}
+
+/** Uma coluna trazida, já resolvida pelo banco. */
+export interface ColunaResolvida {
+  id: string
+  rotulo: string
+  caminho: string
+  fonte: string
+  tipo: string
+  nativo: boolean
+}
+
+/** Um fluxo salvo para reusar — as etapas, as colunas e os pesos juntos. */
+export interface ModeloFluxo {
+  id: string
+  nome: string
+  descricao: string | null
+  etapas: Etapa[]
+  colunas: string[]
+  pesos: Record<string, number>
+  config: Record<string, unknown>
+  /** reservado para o de-para entre plataformas; vazio até ele existir */
+  de_para: Record<string, unknown>
+  criado_em: string
+  atualizado_em: string
 }
 
 export interface CampoFiltravel {
@@ -126,6 +157,20 @@ export const OPERADORES: Record<string, string> = {
 /** Operadores que não pedem valor. */
 export const SEM_VALOR = new Set(['preenchido', 'vazio', 'e_verdadeiro', 'e_falso'])
 
+/**
+ * As colunas do resultado são a união do que cada etapa ativa trouxe, na ordem em
+ * que apareceram. Etapa desligada não contribui — senão o arquivo teria coluna de
+ * um filtro que o usuário desistiu de aplicar.
+ */
+export function colunasDe(etapas: Etapa[]): string[] {
+  const vistas = new Set<string>()
+  for (const e of etapas) {
+    if (e.ativa === false) continue
+    for (const c of e.colunas ?? []) vistas.add(c)
+  }
+  return [...vistas]
+}
+
 function config(i: Partial<Iniciativa>) {
   return {
     pesos: i.pesos ?? {},
@@ -145,10 +190,12 @@ export async function calcularFunil(etapas: Etapa[], i: Partial<Iniciativa>): Pr
 /** Quem saiu numa etapa específica — o clique na linha do funil. */
 export async function pessoasDaEtapa(
   etapas: Etapa[], i: Partial<Iniciativa>, ordem: number | null, limite = 200,
+  colunas?: string[],
 ) {
   const { data, error } = await exigirSupabase()
     .rpc('pessoas_da_etapa', {
       p_etapas: etapas, p_config: config(i), p_ordem: ordem, p_limite: limite,
+      p_colunas: colunas ?? colunasDe(etapas),
     })
   if (error) throw error
   return data ?? []
@@ -203,7 +250,64 @@ export async function gerarLista(iniciativaId: string, etapas: Etapa[], i: Parti
   const { data, error } = await exigirSupabase()
     .rpc('gerar_lista', {
       p_iniciativa_id: iniciativaId, p_etapas: etapas, p_config: config(i),
+      p_colunas: colunasDe(etapas),
     })
   if (error) throw error
   return data as { lista_id: string; total: number; por_time: Record<string, number> }
+}
+
+/**
+ * Os rótulos das colunas vêm do banco, não do catálogo cru: é lá que o
+ * "Dias sem acessar" da MemberClass ganha sobrenome para não se confundir com o
+ * do MemberKit. Tela e xlsx precisam usar a mesma fonte, senão o cabeçalho da
+ * prévia não bate com o do arquivo.
+ */
+export async function resolverColunas(ids: string[]): Promise<ColunaResolvida[]> {
+  if (ids.length === 0) return []
+  const { data, error } = await exigirSupabase()
+    .rpc('resolver_colunas', { p_colunas: ids })
+  if (error) throw error
+  return (data ?? []) as ColunaResolvida[]
+}
+
+// ---------------------------------------------------------------- modelos
+
+export async function listarModelos(): Promise<ModeloFluxo[]> {
+  const { data, error } = await exigirSupabase()
+    .from('modelo_fluxo').select('*').order('atualizado_em', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+/**
+ * Salvar o fluxo NÃO gera lista. Era a única forma de guardar uma receita antes,
+ * e obrigava a produzir uma lista descartável só para não perder o trabalho.
+ */
+export async function salvarModelo(m: {
+  id?: string
+  nome: string
+  descricao?: string | null
+  etapas: Etapa[]
+  pesos: Record<string, number>
+  config: Record<string, unknown>
+}): Promise<ModeloFluxo> {
+  const linha = {
+    ...(m.id ? { id: m.id } : {}),
+    nome: m.nome,
+    descricao: m.descricao ?? null,
+    etapas: m.etapas,
+    colunas: colunasDe(m.etapas),
+    pesos: m.pesos,
+    config: m.config,
+    atualizado_em: new Date().toISOString(),
+  }
+  const { data, error } = await exigirSupabase()
+    .from('modelo_fluxo').upsert(linha, { onConflict: 'id' }).select().single()
+  if (error) throw error
+  return data as ModeloFluxo
+}
+
+export async function apagarModelo(id: string) {
+  const { error } = await exigirSupabase().from('modelo_fluxo').delete().eq('id', id)
+  if (error) throw error
 }
