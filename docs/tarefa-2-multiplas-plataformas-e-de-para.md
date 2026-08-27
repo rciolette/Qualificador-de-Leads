@@ -338,7 +338,30 @@ de-para.
 
 ---
 
-## 9. O que preciso do Raphael antes de codar
+## 9. Respondido pelo Raphael em 27/08/2026 — decidido
+
+As quatro perguntas abaixo foram levadas a ele e respondidas com **"pode seguir
+assim"**. Ficam registradas como decisão, não como dúvida: quem for implementar
+segue este desenho sem reabrir.
+
+| # | Decisão |
+|---|---|
+| 1 | **O desempate ternário está aprovado.** `sem_dado` não vota; `manter_sem_dado` só decide quando *nenhuma* condição pôde ser julgada. A alternativa (por condição) fica descartada. |
+| 2 | **`algum` é o padrão do quantificador.** Com 483 das 567 pessoas discordando de si mesmas entre negócios, o padrão permissivo é o que corresponde a "essa pessoa veio do IniciAmazon". |
+| 3 | **Identidade fica fora do de-para editável.** O de-para do usuário é de vocabulário. A chave de cruzamento continua fechada no sistema. |
+| 4 | **Um nível de combinador, sem grupos aninhados.** Quem precisa de `(A ou B) e C` usa duas etapas. |
+
+### 9b. O que ainda era pergunta e foi respondido junto
+
+- **`invest_mes` não existe no portal.** Dos quatro candidatos medidos, o Raphael
+  confirmou **`investimento_disponivel`**. Os outros três
+  (`cs_valor_disponivel_para_investimento`,
+  `agendamento__capital_para_investimento`, `potencial_de_investimento`) ficam de
+  fora.
+
+### 9c. Perguntas antigas, preservadas
+
+#### 9c-orig. O que preciso do Raphael antes de codar
 
 1. **O desempate ternário está certo?** É a decisão menos óbvia daqui: `sem_dado`
    não votar, e `manter_sem_dado` só valer quando *nenhuma* condição pôde ser

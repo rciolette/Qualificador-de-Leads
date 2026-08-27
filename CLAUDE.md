@@ -123,15 +123,22 @@ Ver `docs/tarefa-2-colunas-e-modelos.md` — 10 de 10 aceites.
 `campo_filtravel` 41 · 76 pessoas sem `crm_snapshot` (todas com e-mail, nenhuma
 com `hubspot_id` — "não achou no HubSpot" é resposta legítima).
 
-**O re-sync do HubSpot está pela metade e não passou pela Edge Function.**
-`config.props_negocio` já tem as 18 props, mas só **94 pessoas** receberam as 6
-novas, e `caixa_disponivel` está em **zero** — nem como chave. Os 94 negócios
-foram lidos antes da migration 50 corrigir o nome, e o Batch Read do HubSpot
-ignora property inexistente **sem erro**. O config de hoje já está certo: falta
-reler. Além disso a última execução registrada em `integracao_execucao` é de
-27/08 00h56, enquanto o `sync_em` mais novo é 27/08 15h31 — aquele re-sync foi
-escrita direta, por isso a tela de saúde não o enxerga. **Reler pela função, não
-por SQL.**
+**O re-sync do HubSpot está pela metade — e morreu de estouro, não de escrita
+direta.** `config.props_negocio` já tem as 18 props e `caixa_disponivel` está em
+**zero**: os negócios lidos naquele re-sync foram buscados antes da migration 50
+corrigir o nome, e o Batch Read do HubSpot **ignora property inexistente sem
+erro**. O config de hoje já está certo; falta reler.
+
+Correção de diagnóstico (a sessão de nuvem leu como "escrita direta por SQL"):
+o re-sync **rodou pela Edge Function**, disparado pela tela `/integracoes` em
+27/08 15h29. Ele gravou 1.217 linhas e então morreu com **HTTP 546
+`WORKER_RESOURCE_LIMIT`** por volta de 200 s, **antes** de chamar
+`registrar_execucao`. Por isso a escrita aparece em `crm_snapshot.sync_em` e a
+execução não aparece em `integracao_execucao` — e a tela de saúde não a enxerga.
+
+A conclusão muda: não adianta "reler pela função". **A função não aguenta a base
+inteira.** O `qualificador-sync` precisa ser fatiado e retomável antes do próximo
+re-sync, igual ao espelhamento — o item 4 da seção 4 agora vale para os dois.
 
 ## 3b. A regra que a Tarefa 0-B estabeleceu
 
