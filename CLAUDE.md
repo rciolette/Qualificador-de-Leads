@@ -3,7 +3,7 @@
 Instruções para qualquer sessão de agente neste repositório.
 **Este arquivo é o ponto de sincronia entre sessões.** Quem terminar uma tarefa
 atualiza a seção 3 aqui antes de sair.
-Última atualização: 28/08/2026, 00h20.
+Última atualização: 28/08/2026 — desenho dos itens (2) e (3) da Tarefa 2.
 
 ## 0. Protocolo entre sessões (leia primeiro)
 
@@ -117,6 +117,22 @@ Como filtro, a MemberClass agora sustenta: 219 pessoas com 1+ aula, 188 com 3+.
 chegam na prévia e no XLSX, e o fluxo pode ser salvo como modelo sem gerar lista.
 Ver `docs/tarefa-2-colunas-e-modelos.md` — 10 de 10 aceites.
 
+**Conferido em 28/08 (sessão de nuvem, só leitura).** Números reais medidos:
+`crm_snapshot` 1.217 (567 com `props`/`props_deals`, **650 nulos**) ·
+`lista_item` 233 · `iniciativa` 3 · `modelo_fluxo` 1 (com colunas, `de_para` vazio) ·
+`campo_filtravel` 41 · 76 pessoas sem `crm_snapshot` (todas com e-mail, nenhuma
+com `hubspot_id` — "não achou no HubSpot" é resposta legítima).
+
+**O re-sync do HubSpot está pela metade e não passou pela Edge Function.**
+`config.props_negocio` já tem as 18 props, mas só **94 pessoas** receberam as 6
+novas, e `caixa_disponivel` está em **zero** — nem como chave. Os 94 negócios
+foram lidos antes da migration 50 corrigir o nome, e o Batch Read do HubSpot
+ignora property inexistente **sem erro**. O config de hoje já está certo: falta
+reler. Além disso a última execução registrada em `integracao_execucao` é de
+27/08 00h56, enquanto o `sync_em` mais novo é 27/08 15h31 — aquele re-sync foi
+escrita direta, por isso a tela de saúde não o enxerga. **Reler pela função, não
+por SQL.**
+
 ## 3b. A regra que a Tarefa 0-B estabeleceu
 
 **Fonte pequena se espelha, fonte grande se consulta.**
@@ -144,11 +160,24 @@ acontece em SQL (`qualificador.reconciliar`). Só o HubSpot fica em
    Sellflux estouraram; precisam retomar de onde pararam, não recomeçar.
 5. **Ler `divisao_times`.** Hoje toda a lista cai em `prioridade_times[1]` — foi
    por isso que a lista de teste saiu inteira como "IS".
-5b. **Tarefa 2, itens (2) e (3)** — múltiplas plataformas por etapa com
-   `qualquer uma` / `todas`, e de-para entre plataformas declarado pelo usuário.
-   São mudança de formato no motor (`campo_bate` passa a receber uma lista de
-   condições com combinador). O Raphael pediu **o desenho antes do código**.
-   O lugar do de-para já existe: `modelo_fluxo.de_para`, hoje vazio.
+5b. **Tarefa 2, itens (2) e (3)** — o **desenho está pronto** e aguarda o aval do
+   Raphael: `docs/tarefa-2-multiplas-plataformas-e-de-para.md`. Em uma linha: a
+   condição passa a ter **três estados** (verdadeiro / falso / sem dado), o
+   `sem_dado` não vota, o combinador (`qualquer` / `todas`) é da etapa e o
+   `manter_sem_dado` vira desempate para quando nada pôde ser julgado. O de-para
+   editável é de **vocabulário**, não de identidade — chave de cruzamento
+   continua fechada. 4 perguntas abertas na seção 9 do documento.
+5b-bis. **BUG LATENTE, achado em 28/08 — as properties de NEGÓCIO do HubSpot
+   estão inalcançáveis.** `crm_snapshot.props_deals` é indexado por **id de
+   negócio** (`{deal_id: {prop: valor}}`), mas `campo_bate` e `valor_do_campo`
+   fazem `props_deals->caminho`, como se fosse objeto plano. Medido numa pessoa
+   com 4 negócios e `origem_de_trafego` preenchida: `campo_bate` devolve `false`
+   e `valor_do_campo` devolve `null`. **Ainda não explodiu** só porque
+   `campo_filtravel` não tem nenhum campo com fonte `hubspot_contato` /
+   `hubspot_negocio` — que é o que liga `nativo`. Catalogar as 18 props de
+   negócio puxa o gatilho. Consertar exige decisão de produto: 508 das 567
+   pessoas têm mais de um negócio (média 3,05) e **483 discordam de si mesmas**
+   em `origem_de_trafego` — daí o `quantificador` (`algum` / `todo`) do desenho.
 5c. **O fluxo guiado ainda não é o caminho principal.** As 6 telas continuam
    irmãs na nav e a raiz cai em `/integracoes`. O funil também não começa por
    upload: `filtrar_em_etapas` parte de `v_pessoa_completa`, já reconciliada.
@@ -281,5 +310,7 @@ Nomear sempre `qualificador_AAAAMMDD_NN_descricao`, com `NN` conferido em
 - `docs/telas-iniciativas.md` — as telas do motor, o aceite no ar e os 3 defeitos
 - `docs/tarefa-2-fluxo-guiado.md` — a especificação do fluxo guiado (4 decisões fechadas)
 - `docs/tarefa-2-colunas-e-modelos.md` — itens (1) e (4) da spec, entregues
+- `docs/tarefa-2-multiplas-plataformas-e-de-para.md` — **desenho** dos itens (2) e
+  (3), o bug latente do `props_deals` e 4 perguntas para o Raphael
 - Projeto Claude "Qualificador de Leads" → `claude/mapa-apis-v1.md` (as 4 APIs) e
   `claude/estado-do-projeto.md` (espelho desta seção 3, para quem não abre o repo)
