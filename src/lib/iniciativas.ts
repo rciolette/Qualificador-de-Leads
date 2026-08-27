@@ -12,6 +12,11 @@ export interface Etapa {
   ativa: boolean
   /** true = property nativa do HubSpot, lida de props / props_deals */
   nativo?: boolean
+  /**
+   * false (padrão) — a etapa é FILTRO: quem não tem o dado sai.
+   * true            — a etapa é REFINO: quem não tem o dado segue sem ser julgado.
+   */
+  manter_sem_dado?: boolean
 }
 
 export interface CampoFiltravel {

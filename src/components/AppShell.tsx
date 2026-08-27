@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 const NAV = [
   { para: '/importar', rotulo: 'Importar', icone: FileUp },
   { para: '/integracoes', rotulo: 'Integrações', icone: Plug },
-  { para: '/saude', rotulo: 'Saúde dos dados', icone: Activity },
+  { para: '/saude-dos-dados', rotulo: 'Saúde dos dados', icone: Activity },
   { para: '/iniciativas', rotulo: 'Iniciativas', icone: Target },
   { para: '/listas', rotulo: 'Listas geradas', icone: ListChecks },
   { para: '/catalogo', rotulo: 'Catálogo', icone: Database },

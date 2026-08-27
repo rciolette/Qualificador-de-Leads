@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,12 +8,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 
 export function LoginPage() {
   const { user, entrar } = useAuth()
+  const local = useLocation()
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [erro, setErro] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
 
-  if (user) return <Navigate to="/integracoes" replace />
+  // quem colou /listas e caiu aqui por não estar logado volta para /listas,
+  // não para a home. O destino vem carimbado por `Protegido`.
+  const destino = (local.state as { de?: string } | null)?.de ?? '/integracoes'
+  if (user) return <Navigate to={destino} replace />
 
   async function aoEnviar(e: FormEvent) {
     e.preventDefault()

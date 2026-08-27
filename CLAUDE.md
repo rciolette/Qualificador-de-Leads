@@ -3,7 +3,7 @@
 Instruções para qualquer sessão de agente neste repositório.
 **Este arquivo é o ponto de sincronia entre sessões.** Quem terminar uma tarefa
 atualiza a seção 3 aqui antes de sair.
-Última atualização: 27/08/2026.
+Última atualização: 27/08/2026, 23h10.
 
 ## 0. Protocolo entre sessões (leia primeiro)
 
@@ -59,28 +59,29 @@ O RBAC é próprio: `qualificador.user_profiles` (papéis `leitor` / `operador` 
 `gestao`). **Não** herda de `public.profiles` nem usa `public.is_gestao()`.
 Ter conta no Gerador de Links não dá acesso aqui.
 
-## 3. Estado real (27/08/2026, 22h40)
+## 3. Estado real (27/08/2026, 23h10)
 
 | Fase / tarefa | Entrega | Situação |
 |---|---|---|
 | Fase 1 | Catálogo e ingestão Assiny | concluída e validada |
 | Fase 2 | Integrações | HubSpot rodou de verdade (584 linhas em `crm_snapshot`) |
 | Tarefa 0 | Teste de conexão por integração | entregue |
-| Tarefa 0-B | Espelho de MemberKit/MemberClass/Sellflux | código no ar; **falta a primeira execução real** |
+| Tarefa 0-B | Espelho de MemberKit/MemberClass/Sellflux | **rodou** (outra sessão): MK 1.439 · MC 11.197 · SF 19.949 |
 | Tarefa 1 | Motor de iniciativas: filtros, funil, 8 eixos de score | **entregue**; 6 de 8 aceites passaram, 2 barrados por falta de dado |
-| Tarefa 2 | Funil de etapas encadeadas (`filtrar_em_etapas`) | **motor pronto e testado**; falta a tela |
-| Fase 3 | Métricas e saúde de dados | não iniciada |
-| Fase 5 | Interface | `/importar`, `/integracoes`, `/catalogo` funcionam |
+| Tarefa 2 | Funil de etapas encadeadas (`filtrar_em_etapas`) | **entregue com tela** — construtor, funil ao vivo, XLSX |
+| Fase 3 | Métricas e saúde de dados | **entregue** — `/saude-dos-dados` com `v_saude_dados` e `v_panorama` |
+| Fase 5 | Interface | completa: + `/iniciativas`, `/iniciativas/nova`, `/listas`, `/saude-dos-dados` |
 | Fase 6 | Ciclo fechado | não iniciada |
 
-**Tabelas e volume:** `pessoa` 1.293 · `pessoa_identificador` 5.197 ·
-`transacao` 1.302 · `crm_snapshot` 744 · `staging_assiny` 1.311 ·
+**Tabelas e volume (27/08 23h):** `pessoa` 1.293 · `pessoa_identificador` 5.197 ·
+`transacao` 1.302 · `crm_snapshot` 935 · `espelho_sellflux` 19.949 ·
+`espelho_memberclass` 11.197 · `espelho_memberkit` 1.439 ·
+`saude_disparo` 783 · `engajamento` 56 · `staging_assiny` 1.311 ·
 `staging_generico` 1.286 · `lista_item` 133 · `campo_filtravel` 42 ·
 `recorte` 9 · `projeto` 9 · `perfil_peso` 7 · `integracao` 5 ·
-`user_profiles` 4 · `importacao` 3 · `integracao_execucao` 24 ·
-`fonte_importacao` 1 · `engajamento` 1 · `saude_disparo` 1 ·
-`iniciativa` 1 · `lista` 1 · **vazias:** `disparo_registro`, `participacao`,
-`documento`, e os três `espelho_*`.
+`user_profiles` 4 · `importacao` 3 · `integracao_execucao` 36 ·
+`fonte_importacao` 1 · `iniciativa` 1 · `lista` 1 ·
+**vazias:** `disparo_registro`, `participacao`, `documento`.
 
 **A primeira lista existe:** 133 pessoas, iniciativa "Corujão · recuperar
 perdido (agosto)". O funil dela: 1.293 → 99 em cadência automática → 18 com
@@ -98,10 +99,18 @@ negócio em IS/AE → 5 com E-cont → **133**.
 `qualificador-sync` (HubSpot + teste de conexão das 4) · `qualificador-espelhar` ·
 `qualificador-importar` · `qualificador-importar-assiny`.
 
-**Publicado em 27/08 22h:** `qualificador-sync` (agora só HubSpot + teste das 4)
-e o front no Cloudflare, já com o botão "Espelhar e cruzar". O item 0 da seção 4
-está fechado. O `qualificador-espelhar` **não** foi republicado por mim — estava
-sendo editado por outra sessão no momento.
+**Publicado em 27/08 23h10** (Version `7bad54e8`): as telas do motor de
+iniciativas, a rota `/saude-dos-dados` e o conserto do deep link. Aceite ponta a
+ponta no ar em `docs/telas-iniciativas.md` — 8 de 8 itens, zero erro HTTP.
+
+**Cruzamento medido** (`casar_espelho`): Sellflux 1.099 pessoas (1.074 por
+e-mail, 25 por telefone) · MemberClass 324 · MemberKit 56. Todos por e-mail na
+prática — ver a armadilha da Sellflux na seção 5.
+
+**Presas agora:** as execuções 35 (memberclass) e 36 (sellflux) estão em
+`em_andamento` desde 01:30 e 01:46 UTC — estouraram o tempo da Edge Function sem
+chamar `finalizar_execucao`. O dado entrou; a reconciliação da MemberClass não
+rodou (`engajamento` tem só as 56 do MemberKit). São de outra sessão.
 
 ## 3b. A regra que a Tarefa 0-B estabeleceu
 
@@ -117,16 +126,22 @@ acontece em SQL (`qualificador.reconciliar`). Só o HubSpot fica em
 ## 4. Trabalho em aberto (pegue daqui)
 
 0. ~~Publicar o que está no repo mas não em produção.~~ **Fechado em 27/08 22h.**
-1. **Rodar as três fontes espelhadas de verdade** e conferir os aceites:
-   MemberKit ~1.433 linhas em <60 s · MemberClass reportando `totalCount`
-   (0 ⇒ chave de outro tenant, parar) · Sellflux cruzando majoritariamente por
-   telefone.
-2. ~~Encher `iniciativa` / `lista` / `lista_item`.~~ **Fechado**: primeira lista
-   com 133 pessoas. Falta a **tela** — `/iniciativas/nova`, `/listas` e a
-   exportação XLSX/CSV. O motor responde; ninguém consegue usá-lo sem SQL.
-3. Decidir `ECONT CONTABILIDADE DO ECOMMERCE` (2.370 transações fora do catálogo,
+1. ~~Rodar as três fontes espelhadas de verdade.~~ **Fechado**: MemberKit 1.439
+   (casou 56), MemberClass 11.197 (casa 324), Sellflux 19.949 (casa 1.099).
+   A previsão de que a Sellflux cruzaria por telefone estava errada — ver seção 5.
+2. ~~Encher `iniciativa` / `lista` / `lista_item`, e a tela.~~ **Fechado em 27/08
+   23h10**: `/iniciativas/nova`, `/listas`, `/saude-dos-dados` e o XLSX estão no
+   ar e testados de ponta a ponta. Ver `docs/telas-iniciativas.md`.
+3. **Reconciliar a MemberClass.** O espelho casa 324 pessoas, mas `engajamento`
+   só tem as 56 do MemberKit: a execução 35 travou em `em_andamento` sem chamar
+   `finalizar_execucao`. A tela de saúde mostra "sem sincronização" por isso.
+4. **Fatiar o espelhamento para caber no tempo da Edge Function.** MemberClass e
+   Sellflux estouraram; precisam retomar de onde pararam, não recomeçar.
+5. **Ler `divisao_times`.** Hoje toda a lista cai em `prioridade_times[1]` — foi
+   por isso que a lista de teste saiu inteira como "IS".
+6. Decidir `ECONT CONTABILIDADE DO ECOMMERCE` (2.370 transações fora do catálogo,
    hoje bloqueia a importação) e a `area_membros` de `ECONT BH`.
-4. Decidir qual escala de classificação manda: `classificacao_leadscore` (5),
+7. Decidir qual escala de classificação manda: `classificacao_leadscore` (5),
    `[LEAD] TIER *` do MemberKit (5) ou `dash.leadscore_faixas` (7).
 
 ## 4b. Funil de etapas — a decisão em aberto já tem resposta
@@ -169,6 +184,18 @@ do dado exclui, ou não.
   Postgres ao recriar função. Foi assim que `credencial_ler` — que devolve o token
   do HubSpot em texto puro — voltou a ser executável por `authenticated` depois de
   a migration 10 tê-la revogado. **Revogar depois de cada replace não é opcional.**
+- **Revogar de `authenticated` só vale para função `SECURITY DEFINER`.** Numa
+  função `INVOKER` a revogação quebra quem chama: a migration 41 tirou
+  `campo_bate` de `authenticated` por zelo, e como `filtrar_em_etapas` é INVOKER,
+  o PostgREST passou a devolver **403 em toda a tela `/iniciativas/nova`** — que
+  o console mostrava como um 500 genérico. `campo_bate` é função pura, não lia
+  tabela nenhuma. Reparado na migration 43.
+- **Não declare `carregando = false` antes de `getSession()` responder.** No
+  primeiro render `session` é null porque a resposta não chegou, não porque a
+  pessoa está deslogada. Confundir os dois mandava quem colava `/listas` para
+  `/entrar`, e de lá para `/integracoes`: **todo deep link virava a home, em
+  silêncio.** O `AuthContext` agora tem `sessaoLida`, e o `Protegido` carimba
+  `state.de` para o login voltar ao destino certo.
 - **Cast de campo vindo de API precisa ser tolerante.** APIs devolvem `""` onde não
   há valor, e `''::date` derruba a view inteira. Use `qualificador.como_data`,
   `como_ts`, `como_bool`.
@@ -186,8 +213,11 @@ do dado exclui, ou não.
   `"phone": 51999999999` e nós guardamos `+5551999999999`. A regra existe em DOIS
   lugares — `qualificador.chave_telefone()` no banco e `chaveTelefone()` em
   `fontes.ts`. Mudar uma sem a outra faz o cruzamento parar de casar **em silêncio**.
-- **Sellflux: `email` vem `null` na maioria dos leads.** Nunca filtrar lead por
-  e-mail exato — foi o bug que fazia a integração "não conferir nada".
+- **Sellflux: `email` vem `null` em muitos leads** — nunca filtrar lead por
+  e-mail exato, foi o bug que fazia a integração "não conferir nada". Mas a
+  previsão de que ela cruzaria *majoritariamente por telefone* **estava errada**:
+  medido em `casar_espelho`, são 1.074 por e-mail contra 25 por telefone.
+  `espelho_memberclass`, essa sim, não traz telefone nenhum (0 de 11.197).
 - **MemberClass: usar `/api/v1/student/report`**, o relatório do tenant inteiro.
   `/user/informations?email=…` devolve 404 quando não acha, e todo "não tem conta"
   virava linha de erro.
@@ -227,5 +257,6 @@ Nomear sempre `qualificador_AAAAMMDD_NN_descricao`, com `NN` conferido em
 - `docs/fase-1.md` — catálogo e ingestão
 - `docs/fase-2.md` — integrações
 - `docs/tarefa-0b.md` — por que as três fontes pequenas não cruzavam nada
+- `docs/telas-iniciativas.md` — as telas do motor, o aceite no ar e os 3 defeitos
 - Projeto Claude "Qualificador de Leads" → `claude/mapa-apis-v1.md` (as 4 APIs) e
   `claude/estado-do-projeto.md` (espelho desta seção 3, para quem não abre o repo)

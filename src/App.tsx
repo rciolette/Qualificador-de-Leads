@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { supabaseConfigurado } from '@/lib/supabase'
@@ -9,7 +9,9 @@ import { IntegracoesPage } from '@/pages/IntegracoesPage'
 import { CatalogoPage } from '@/pages/CatalogoPage'
 import { ImportarPage } from '@/pages/ImportarPage'
 import { SaudePage } from '@/pages/SaudePage'
+
 import { IniciativasPage } from '@/pages/IniciativasPage'
+import { IniciativaNovaPage } from '@/pages/IniciativaNovaPage'
 import { ListasPage } from '@/pages/ListasPage'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
@@ -19,6 +21,7 @@ const qc = new QueryClient({
 
 function Protegido() {
   const { user, carregando, semPapel, erroPapel } = useAuth()
+  const local = useLocation()
 
   if (carregando) {
     return (
@@ -27,7 +30,9 @@ function Protegido() {
       </div>
     )
   }
-  if (!user) return <Navigate to="/entrar" replace />
+  if (!user) {
+    return <Navigate to="/entrar" replace state={{ de: local.pathname + local.search }} />
+  }
 
   // o erro mais provável na primeira subida: o PostgREST ainda não expõe o schema
   if (erroPapel) {
@@ -127,8 +132,12 @@ export default function App() {
               <Route index element={<Navigate to="/integracoes" replace />} />
               <Route path="/importar" element={<ImportarPage />} />
               <Route path="/integracoes" element={<IntegracoesPage />} />
-              <Route path="/saude" element={<SaudePage />} />
+              {/* A tarefa 3 pediu /saude-dos-dados; /saude fica de pé porque
+                  já circulou em link colado. Mesma tela, um caminho canônico. */}
+              <Route path="/saude-dos-dados" element={<SaudePage />} />
+              <Route path="/saude" element={<Navigate to="/saude-dos-dados" replace />} />
               <Route path="/iniciativas" element={<IniciativasPage />} />
+              <Route path="/iniciativas/nova" element={<IniciativaNovaPage />} />
               <Route path="/listas" element={<ListasPage />} />
               <Route path="/catalogo" element={<CatalogoPage />} />
             </Route>

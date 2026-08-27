@@ -25,6 +25,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [papel, setPapel] = useState<Papel | null>(null)
   const [erroPapel, setErroPapel] = useState<string | null>(null)
   const [carregando, setCarregando] = useState(true)
+  /** a primeira resposta de `getSession()` já chegou? */
+  const [sessaoLida, setSessaoLida] = useState(false)
 
   useEffect(() => {
     let vivo = true
@@ -39,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     exigirSupabase().auth.getSession().then(({ data }) => {
       if (vivo) {
         setSession(data.session)
+        setSessaoLida(true)
         if (!data.session) setCarregando(false)
       }
     })
@@ -47,7 +50,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    if (!session?.user) { setPapel(null); setErroPapel(null); setCarregando(false); return }
+    // Só é honesto dizer "terminei de carregar" depois que a primeira leitura de
+    // sessão voltou. Antes disso `session` é null porque `getSession()` ainda não
+    // respondeu — e não porque o usuário está deslogado. Declarar carregando=false
+    // aí mandava quem colou um link para /entrar, e de lá para /integracoes:
+    // todo deep link virava a home, em silêncio.
+    if (!session?.user) {
+      setPapel(null); setErroPapel(null)
+      if (sessaoLida) setCarregando(false)
+      return
+    }
     let vivo = true
     setCarregando(true)
     buscarPapel(session.user.id)
@@ -57,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch((e: Error) => { if (vivo) { setPapel(null); setErroPapel(e.message) } })
       .finally(() => { if (vivo) setCarregando(false) })
     return () => { vivo = false }
-  }, [session?.user?.id])
+  }, [session?.user?.id, sessaoLida])
 
   const valor = useMemo<Auth>(() => ({
     user: session?.user ?? null,
