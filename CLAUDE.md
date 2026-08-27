@@ -279,6 +279,22 @@ do dado exclui, ou não.
   Na primeira vez que rodei o certo, ele achou dois erros reais que o outro
   deixava passar. E `node_modules/` já apareceu vazio no meio da sessão (outra
   sessão ou o sandbox): `npm install` antes de acusar o build.
+- **Um handler que muda N coisas precisa de UMA chamada de estado.** Escolher o
+  campo de uma condição mudava condição, coluna e rótulo em três chamadas
+  seguidas de `aoAtualizar`, cada uma montando o objeto a partir do render
+  atual: a última sobrescrevia as outras. O sintoma enganava — a coluna e o
+  rótulo apareciam, e a condição ficava vazia, o que fazia o funil **cortar
+  todo mundo**, porque condição sem campo nunca é satisfeita.
+- **`gerar_lista` roda `filtrar_em_etapas` UMA vez.** Ele o chamava duas —
+  dentro de `funil()` e para os itens. Com 4.430 pessoas isso passou de 8 s e
+  o PostgREST cancelou com `57014: statement timeout`, que chega no front como
+  um 500 opaco. Hoje custa 3,38 s. **O teto é 8 s**: se a base dobrar, o
+  gargalo volta, e ele é o `to_jsonb(v)` de uma view com 61 colunas por linha.
+- **Visibilidade não pode depender de animação CSS.** O `PopoverContent` do
+  shadcn nasce com `opacity: 0` e conta com a animação `enter` para chegar a 1.
+  Aba em segundo plano pausa animações e `prefers-reduced-motion` as desliga —
+  nos dois casos o componente abre invisível. Use `animate-none opacity-100`
+  onde o conteúdo precisa aparecer sempre.
 - **Estado de tela que o usuário construiu não pode viver só em `useState`.**
   O `/fluxo` guardava nome, etapas, colunas e pesos em estado local: sair para
   "Listas geradas" e voltar apagava o trabalho inteiro, sem erro nenhum. Agora vai
@@ -384,5 +400,6 @@ Nomear sempre `qualificador_AAAAMMDD_NN_descricao`, com `NN` conferido em
 - `docs/tarefa-2-multiplas-plataformas-e-de-para.md` — o desenho de (2) e (3), com as 4 decisões
 - `docs/tarefa-2-passos-1-2-condicao-ternaria.md` — passos 1 e 2 do desenho, entregues
 - `docs/fluxo-guiado.md` — o fluxo vira o caminho principal (passos 3 e 5)
+- `docs/validacao-para-producao.md` — a varredura do front, 4 defeitos e 11 aceites
 - Projeto Claude "Qualificador de Leads" → `claude/mapa-apis-v1.md` (as 4 APIs) e
   `claude/estado-do-projeto.md` (espelho desta seção 3, para quem não abre o repo)
