@@ -16,13 +16,17 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import postgres from 'npm:postgres@3.4.5'
 import {
-  adivinharMapeamento, CAMPOS_CANONICOS, formatoDe, lerDelimitado, lerXlsx,
-  type Planilha,
+  adivinharMapeamento, CAMPOS_CANONICOS, formatoDe,
+  processarDelimitado, processarXlsx, type Cabecalho,
 } from './planilha.ts'
 
-const LOTE = 500
+// Lotes pequenos de propósito: o pico de memória da função é o tamanho do lote,
+// não o do arquivo. Foi lote grande + arquivo inteiro em memória que produziu
+// HTTP 546 (WORKER_LIMIT) ao subir vários relatórios da Assiny de uma vez.
+const LOTE = 200
 const MAX_BYTES = 60 * 1024 * 1024
-const AMOSTRA = 5
+/** Acima disso, um único worker não dá conta de vários arquivos por requisição. */
+const MAX_ARQUIVOS_POR_REQUISICAO = 4
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -88,6 +92,12 @@ async function analisar(req: Request, sql: any, userId: string): Promise<Respons
   if (arquivos.length === 0) {
     return responder({ erro: 'Envie ao menos um arquivo no campo "arquivos"' }, 400)
   }
+  if (arquivos.length > MAX_ARQUIVOS_POR_REQUISICAO) {
+    return responder({
+      erro: `Máximo de ${MAX_ARQUIVOS_POR_REQUISICAO} arquivos por vez (recebidos ${arquivos.length}).`,
+      dica: 'O front envia um arquivo por requisição; esta trava existe para chamadas diretas.',
+    }, 413)
+  }
 
   const resultados: unknown[] = []
   const documentos: unknown[] = []
@@ -113,43 +123,49 @@ async function analisar(req: Request, sql: any, userId: string): Promise<Respons
       continue
     }
 
-    let planilha: Planilha
+    // a importação nasce antes da leitura: os lotes são gravados enquanto o
+    // arquivo é percorrido, sem nunca materializar a planilha inteira
+    const [imp] = await sql`
+      insert into qualificador.importacao (arquivo, formato, status, importado_por)
+      values (${arquivo.name}, ${formato}, 'analisado', ${userId}::uuid)
+      returning id`
+
+    const gravarLote = async (linhas: Record<string, string>[], primeira: number) => {
+      // objeto via sql.json: o driver serializa uma vez para jsonb. Com JSON.stringify
+      // aqui, ele serializa de novo e a coluna guarda uma STRING de JSON, não um objeto --
+      // jsonb_typeof passa a devolver "string" e todo `dados ->> 'coluna'` vira null.
+      const fatia = linhas.map((dados, j) => ({
+        importacao_id: imp.id,
+        linha: primeira + j,
+        dados: sql.json(dados),
+      }))
+      await sql`insert into qualificador.staging_generico ${
+        sql(fatia, 'importacao_id', 'linha', 'dados')
+      }`
+    }
+
+    let planilha: Cabecalho
     try {
       planilha = formato === 'xlsx'
-        ? lerXlsx(await arquivo.arrayBuffer(), linhaCabecalho)
-        : lerDelimitado(await arquivo.text(), linhaCabecalho)
+        ? await processarXlsx(await arquivo.arrayBuffer(), linhaCabecalho, LOTE, gravarLote)
+        : await processarDelimitado(await arquivo.text(), linhaCabecalho, LOTE, gravarLote)
     } catch (e) {
+      await sql`delete from qualificador.importacao where id = ${imp.id}`.catch(() => {})
       resultados.push({ arquivo: arquivo.name, erro: `Não foi possível ler: ${(e as Error).message}` })
       continue
     }
 
-    if (planilha.linhas.length === 0) {
+    if (planilha.total === 0) {
+      await sql`delete from qualificador.importacao where id = ${imp.id}`.catch(() => {})
       resultados.push({ arquivo: arquivo.name, erro: 'Nenhuma linha de dados no arquivo' })
       continue
     }
 
     const sugestoes = await sql`
       select * from qualificador.sugerir_fonte(${planilha.colunas})`
-
-    const [imp] = await sql`
-      insert into qualificador.importacao
-        (arquivo, formato, status, importado_por, fonte_importacao_id)
-      values (${arquivo.name}, ${formato}, 'analisado', ${userId}::uuid,
-              ${sugestoes[0]?.id ?? null})
-      returning id`
-
-    for (let i = 0; i < planilha.linhas.length; i += LOTE) {
-      // objeto direto: o driver serializa uma vez para jsonb. Com JSON.stringify aqui,
-      // ele serializa de novo e a coluna guarda uma STRING de JSON, não um objeto --
-      // jsonb_typeof passa a devolver "string" e todo `dados ->> 'coluna'` vira null.
-      const fatia = planilha.linhas.slice(i, i + LOTE).map((dados, j) => ({
-        importacao_id: imp.id,
-        linha: i + j + 1,
-        dados: sql.json(dados),
-      }))
-      await sql`insert into qualificador.staging_generico ${
-        sql(fatia, 'importacao_id', 'linha', 'dados')
-      }`
+    if (sugestoes[0]) {
+      await sql`update qualificador.importacao set fonte_importacao_id = ${sugestoes[0].id}
+                where id = ${imp.id}`
     }
 
     // se um perfil salvo reconheceu o arquivo, o de-para dele vale mais que o palpite
@@ -169,10 +185,10 @@ async function analisar(req: Request, sql: any, userId: string): Promise<Respons
       importacao_id: imp.id,
       arquivo: arquivo.name,
       formato,
-      linhas: planilha.linhas.length,
+      linhas: planilha.total,
       linha_cabecalho: planilha.linhaCabecalho,
       colunas: planilha.colunas,
-      amostra: planilha.linhas.slice(0, AMOSTRA),
+      amostra: planilha.amostra,
       fonte_sugerida: sugestoes[0]
         ? { id: sugestoes[0].id, nome: sugestoes[0].nome, embutido: sugestoes[0].embutido }
         : null,

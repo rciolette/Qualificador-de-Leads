@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils'
 export function ImportarPage() {
   const qc = useQueryClient()
   const [arrastando, setArrastando] = useState(false)
+  const [progresso, setProgresso] = useState<{ feitos: number; total: number; arquivo: string } | null>(null)
   const [analises, setAnalises] = useState<Analise[]>([])
   const [campos, setCampos] = useState<CampoCanonico[]>([])
   const entrada = useRef<HTMLInputElement>(null)
@@ -26,7 +27,10 @@ export function ImportarPage() {
   const importacoes = useQuery({ queryKey: ['importacoes'], queryFn: () => listarImportacoes(20) })
 
   const analisar = useMutation({
-    mutationFn: (arquivos: File[]) => analisarArquivos(arquivos),
+    mutationFn: (arquivos: File[]) => analisarArquivos(arquivos, {
+      aoProgresso: (feitos, total, arquivo) => setProgresso({ feitos, total, arquivo }),
+    }),
+    onSettled: () => setProgresso(null),
     onSuccess: (r) => {
       const bons = r.analisados.filter((a) => !a.erro)
       const ruins = r.analisados.filter((a) => a.erro)
@@ -94,7 +98,11 @@ export function ImportarPage() {
         <Upload className={cn('h-8 w-8', arrastando ? 'text-primary' : 'text-muted-foreground')} />
         <div>
           <p className="text-body font-medium">
-            {analisar.isPending ? 'Lendo os arquivos…' : 'Arraste os arquivos aqui ou clique para escolher'}
+            {analisar.isPending
+              ? progresso && progresso.total > 1
+                ? `Lendo ${progresso.feitos + 1} de ${progresso.total}: ${progresso.arquivo}`
+                : 'Lendo o arquivo…'
+              : 'Arraste os arquivos aqui ou clique para escolher'}
           </p>
           <p className="mt-1 text-label text-muted-foreground">
             Vários de uma vez. Planilhas em .csv, .tsv, .xlsx, .xls e .ods viram dados;

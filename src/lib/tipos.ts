@@ -121,3 +121,13 @@ export interface ResultadoImportacao {
   colunas_ignoradas?: string[]
   duracao_ms?: number
 }
+
+/** Resposta de qualificador-sync com acao "testar". */
+export interface Diagnostico {
+  fonte: string
+  ok: boolean
+  status: number | null
+  titulo: string
+  detalhe: string
+  acao?: string
+}

@@ -66,23 +66,70 @@ async function token(): Promise<string> {
   return session.access_token
 }
 
-/** Sobe os arquivos e devolve o que foi encontrado. Nada vira dado ainda. */
+/**
+ * Sobe os arquivos e devolve o que foi encontrado. Nada vira dado ainda.
+ *
+ * Um arquivo por requisição, em série. Mandar vários no mesmo POST derrubava a
+ * Edge Function com HTTP 546 (WORKER_LIMIT): um relatório da Assiny tem ~6.700
+ * linhas × 63 colunas, e o worker tem memória de sobra para um, não para quatro.
+ * Em série, cada arquivo pega um worker limpo — e um que falhe não leva os outros.
+ */
 export async function analisarArquivos(
   arquivos: File[],
-  linhaCabecalho?: number,
+  opcoes: {
+    linhaCabecalho?: number
+    aoProgresso?: (feitos: number, total: number, arquivo: string) => void
+  } = {},
 ): Promise<RespostaAnalise> {
-  const form = new FormData()
-  for (const a of arquivos) form.append('arquivos', a)
-  if (linhaCabecalho !== undefined) form.append('linha_cabecalho', String(linhaCabecalho))
+  const juntos: RespostaAnalise = { analisados: [], documentos: [], campos: [] }
 
-  const r = await fetch(`${FUNCTIONS_URL}/qualificador-importar`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${await token()}` },
-    body: form,
-  })
-  const dados = await r.json().catch(() => ({}))
-  if (!r.ok) throw new Error(dados?.erro ?? `Análise falhou: HTTP ${r.status}`)
-  return dados as RespostaAnalise
+  for (const [i, arquivo] of arquivos.entries()) {
+    opcoes.aoProgresso?.(i, arquivos.length, arquivo.name)
+
+    const form = new FormData()
+    form.append('arquivos', arquivo)
+    if (opcoes.linhaCabecalho !== undefined) {
+      form.append('linha_cabecalho', String(opcoes.linhaCabecalho))
+    }
+
+    try {
+      const r = await fetch(`${FUNCTIONS_URL}/qualificador-importar`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${await token()}` },
+        body: form,
+      })
+      const dados = await r.json().catch(() => ({}))
+
+      if (!r.ok) {
+        // um arquivo problemático não pode cancelar os outros da fila
+        juntos.analisados.push({
+          arquivo: arquivo.name,
+          erro: dados?.erro ?? explicarHttp(r.status),
+        } as Analise)
+        continue
+      }
+      juntos.analisados.push(...(dados.analisados ?? []))
+      juntos.documentos.push(...(dados.documentos ?? []))
+      if (dados.campos?.length) juntos.campos = dados.campos
+    } catch (e) {
+      juntos.analisados.push({
+        arquivo: arquivo.name,
+        erro: `Falha de rede: ${(e as Error).message}`,
+      } as Analise)
+    }
+  }
+
+  opcoes.aoProgresso?.(arquivos.length, arquivos.length, '')
+  return juntos
+}
+
+function explicarHttp(status: number): string {
+  if (status === 546) {
+    return 'O arquivo é grande demais para uma leitura só. Tente dividi-lo em partes menores.'
+  }
+  if (status === 413) return 'Arquivo acima do limite de 60 MB.'
+  if (status === 504) return 'A leitura demorou demais e foi interrompida.'
+  return `Análise falhou: HTTP ${status}`
 }
 
 /** Confirma o de-para e grava de verdade. */

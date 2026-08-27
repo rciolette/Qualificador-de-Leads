@@ -1,6 +1,6 @@
 import { exigirSupabase, supabase, FUNCTIONS_URL } from './supabase'
 import type {
-  Execucao, Frescor, Importacao, Integracao, Papel, Projeto,
+  Diagnostico, Execucao, Frescor, Importacao, Integracao, Papel, Projeto,
   ResultadoCredencial, ResultadoImportacao, ResultadoSync,
 } from './tipos'
 
@@ -83,6 +83,11 @@ export async function importarAssiny(arquivo: File): Promise<ResultadoImportacao
     throw erro
   }
   return dados as ResultadoImportacao
+}
+
+/** Checa a credencial sem ler nem gravar nada. O diagnóstico É a resposta. */
+export function testarConexao(fonte: string) {
+  return chamarFuncao<Diagnostico>('qualificador-sync', { fonte, acao: 'testar' })
 }
 
 export function sincronizar(fonte: string, limite = 100, maxIdadeHoras = 24) {

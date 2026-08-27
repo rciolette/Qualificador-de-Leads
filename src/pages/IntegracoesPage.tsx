@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertCircle, CheckCircle2, KeyRound, RefreshCw, ShieldCheck } from 'lucide-react'
+import { AlertCircle, CheckCircle2, KeyRound, Plug2, RefreshCw, ShieldCheck, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { TituloPagina } from '@/components/AppShell'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   formatarData, formatarDuracao, formatarNumero,
-  listarExecucoes, listarFrescor, listarIntegracoes, salvarCredencial, sincronizar,
+  listarExecucoes, listarFrescor, listarIntegracoes, salvarCredencial, sincronizar, testarConexao,
 } from '@/lib/dados'
-import type { Integracao } from '@/lib/tipos'
+import type { Diagnostico, Integracao } from '@/lib/tipos'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -135,7 +135,23 @@ function CartaoIntegracao({
   aoMudar: () => void
 }) {
   const [token, setToken] = useState('')
+  const [diagnostico, setDiagnostico] = useState<Diagnostico | null>(null)
   const semApi = ig.slug === 'assiny' // entrada é upload de CSV, não API
+
+  const testar = useMutation({
+    mutationFn: () => testarConexao(ig.slug),
+    onSuccess: (d) => {
+      setDiagnostico(d)
+      if (d.ok) toast.success(d.titulo, { description: d.detalhe })
+      else toast.error(d.titulo, { description: [d.detalhe, d.acao].filter(Boolean).join(' '), duration: 15000 })
+      aoMudar()
+    },
+    onError: (e: Error) => {
+      setDiagnostico({ fonte: ig.slug, ok: false, status: null,
+        titulo: 'Não foi possível testar', detalhe: e.message })
+      toast.error('Não foi possível testar', { description: e.message })
+    },
+  })
 
   const gravar = useMutation({
     mutationFn: () => salvarCredencial(ig.slug, token),
@@ -256,15 +272,43 @@ function CartaoIntegracao({
               </p>
             )}
 
-            <Button
-              variant="outline"
-              className="w-full gap-2"
-              disabled={!ig.ativa || !podeSincronizar || sync.isPending}
-              onClick={() => sync.mutate()}
-            >
-              <RefreshCw className={sync.isPending ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
-              {sync.isPending ? 'Sincronizando…' : 'Sincronizar agora'}
-            </Button>
+            {diagnostico && (
+              <p className={
+                'flex items-start gap-2 rounded-lg px-3 py-2 text-label ' +
+                (diagnostico.ok ? 'bg-success/15 text-success' : 'bg-destructive/15 text-destructive')
+              }>
+                {diagnostico.ok
+                  ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  : <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
+                <span>
+                  <strong>{diagnostico.titulo}</strong> — {diagnostico.detalhe}
+                  {diagnostico.acao && (
+                    <span className="mt-1 block opacity-90">{diagnostico.acao}</span>
+                  )}
+                </span>
+              </p>
+            )}
+
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="outline"
+                className="gap-2"
+                disabled={!ig.ativa || testar.isPending}
+                onClick={() => testar.mutate()}
+              >
+                <Plug2 className={testar.isPending ? 'h-4 w-4 animate-pulse' : 'h-4 w-4'} />
+                {testar.isPending ? 'Testando…' : 'Testar conexão'}
+              </Button>
+              <Button
+                variant="outline"
+                className="gap-2"
+                disabled={!ig.ativa || !podeSincronizar || sync.isPending}
+                onClick={() => sync.mutate()}
+              >
+                <RefreshCw className={sync.isPending ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+                {sync.isPending ? 'Sincronizando…' : 'Sincronizar'}
+              </Button>
+            </div>
             {!ig.ativa && (
               <p className="text-micro text-muted-foreground">
                 Grave a credencial para habilitar a sincronização.

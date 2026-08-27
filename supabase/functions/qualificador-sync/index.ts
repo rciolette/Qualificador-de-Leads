@@ -16,6 +16,7 @@ import { hubspot } from './hubspot.ts'
 import { memberkit } from './memberkit.ts'
 import { memberclass } from './memberclass.ts'
 import { sellflux } from './sellflux.ts'
+import { testar } from './teste.ts'
 
 const ADAPTADORES: Record<string, Adaptador> = {
   hubspot: hubspot,
@@ -51,7 +52,11 @@ Deno.serve(async (req) => {
   const { data: { user }, error: erroAuth } = await supabase.auth.getUser()
   if (erroAuth || !user) return responder({ erro: 'Sessão inválida' }, 401)
 
-  let corpo: { fonte?: string; limite?: number; max_idade_horas?: number; emails?: string[] }
+  let corpo: {
+    fonte?: string; limite?: number; max_idade_horas?: number; emails?: string[]
+    /** 'testar' só checa a credencial; não lê nem grava nada */
+    acao?: 'sincronizar' | 'testar'
+  }
   try {
     corpo = await req.json()
   } catch {
@@ -89,14 +94,32 @@ Deno.serve(async (req) => {
       from qualificador.integracao where slug = ${fonte}`
     if (!integracao) return responder({ erro: `Integração "${fonte}" não cadastrada` }, 404)
     if (!integracao.ativa) {
-      return responder(
-        { erro: `Integração "${fonte}" inativa — grave a credencial primeiro`, fonte },
-        409,
-      )
+      return responder({
+        fonte, ok: false, status: null,
+        titulo: 'Sem credencial',
+        detalhe: `A integração "${fonte}" ainda não tem credencial gravada.`,
+        acao: 'Grave o token no campo acima para habilitar teste e sincronização.',
+        erro: `Integração "${fonte}" inativa — grave a credencial primeiro`,
+      }, corpo.acao === 'testar' ? 200 : 409)
     }
 
     const [{ credencial_ler: credencial }] = await sql`
       select qualificador.credencial_ler(${fonte}) as credencial_ler`
+
+    // Teste de conexão: uma chamada barata, sem tocar em pessoa nem em snapshot.
+    // Separa "credencial inválida" de "credencial boa e resultado zero".
+    if (corpo.acao === 'testar') {
+      const d = await testar(fonte, {
+        credencial,
+        baseUrl: integracao.base_url ?? '',
+        config: integracao.config,
+        lote: 1,
+      })
+      await sql`select qualificador.registrar_execucao(
+        ${fonte}, 'testar', ${d.ok ? 'ok' : 'erro'}, null, ${Date.now() - inicio},
+        ${d.ok ? null : `${d.titulo}: ${d.detalhe}`})`
+      return responder({ fonte, ...d }, d.ok ? 200 : 200)  // 200 sempre: o diagnóstico É a resposta
+    }
 
     // alvos: os pedidos explicitamente, ou os mais desatualizados
     const alvos: Alvo[] = corpo.emails?.length
