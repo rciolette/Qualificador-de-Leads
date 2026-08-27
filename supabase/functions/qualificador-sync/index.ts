@@ -158,6 +158,21 @@ Deno.serve(async (req) => {
 
     const gravadas = await gravar(sql, resultado.gravacoes)
 
+    // "procurei e não achei" também é resposta, e precisa ser gravada: sem isso
+    // quem não existe na fonte volta para a fila em toda rodada, para sempre.
+    // Medido no HubSpot: um lote de 100 achava 44, e as outras 56 reapareciam.
+    const idsEncontrados = [
+      ...new Set(
+        resultado.gravacoes
+          .filter((g) => g.tabela === 'crm_snapshot')
+          .map((g) => g.pessoa_id),
+      ),
+    ]
+    await sql`select qualificador.registrar_tentativas(
+      ${fonte},
+      ${alvos.map((a) => a.pessoa_id)}::uuid[],
+      ${idsEncontrados}::uuid[])`
+
     const duracao = Date.now() - inicio
     await sql`select qualificador.registrar_execucao(
       ${fonte}, 'sync', 'ok', ${resultado.encontrados}, ${duracao},
@@ -169,6 +184,8 @@ Deno.serve(async (req) => {
       encontrados: resultado.encontrados,
       // o PRD manda conferir declarado x recebido: a diferença é explícita
       nao_encontrados: alvos.length - resultado.encontrados,
+      // essas saem da fila pelo mesmo prazo: foram procuradas, não estão lá
+      marcadas_ausentes: alvos.length - idsEncontrados.length,
       chamadas_http: resultado.chamadas,
       gravadas,
       duracao_ms: duracao,
