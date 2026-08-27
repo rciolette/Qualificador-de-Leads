@@ -20,7 +20,9 @@ numeração de migration fora de ordem. Regras para não repetir:
    pode haver arquivos de outra sessão no meio do caminho.
 3. **Migration nova sempre com o timestamp do dia e o próximo número livre.**
    Confira com `list_migrations` antes de escolher o número — a numeração já
-   pulou 22 e 23 e recebeu 14 e 15 depois do 21.
+   pulou 22 e 23 e recebeu 14 e 15 depois do 21. E **traga o `.sql` para
+   `supabase/migrations/` no mesmo commit** — desde 27/08 o repo reproduz o
+   schema, e aplicar sem versionar o arquivo faz ele divergir de novo (seção 6).
 4. **Antes de começar, leia a seção 3.** Depois de entregar, atualize a seção 3 e
    escreva um `docs/<tarefa>.md` com aceite, divergências e decisões.
 5. `git status` pode falhar com `index.lock` — é outra sessão commitando ou o
@@ -59,86 +61,79 @@ O RBAC é próprio: `qualificador.user_profiles` (papéis `leitor` / `operador` 
 `gestao`). **Não** herda de `public.profiles` nem usa `public.is_gestao()`.
 Ter conta no Gerador de Links não dá acesso aqui.
 
-## 3. Estado real (28/08/2026, 00h20)
+## 3. Estado real (27/08/2026, 17h — `main` é oficial a partir daqui)
+
+O `main` está em `d5bbf15` e **reproduz o banco**: as 53 migrations do schema
+estão em `supabase/migrations/` (ver seção 6). Local e remoto sincronizados, sem
+branch pendente — `main-j9m1xx` já está contido no `main`.
 
 | Fase / tarefa | Entrega | Situação |
 |---|---|---|
 | Fase 1 | Catálogo e ingestão Assiny | concluída e validada |
-| Fase 2 | Integrações | HubSpot rodou de verdade (584 linhas em `crm_snapshot`) |
+| Fase 2 | Integrações | HubSpot rodou de verdade |
 | Tarefa 0 | Teste de conexão por integração | entregue |
-| Tarefa 0-B | Espelho de MemberKit/MemberClass/Sellflux | **rodou** (outra sessão): MK 1.439 · MC 11.197 · SF 19.949 |
-| Tarefa 1 | Motor de iniciativas: filtros, funil, 8 eixos de score | **entregue**; 6 de 8 aceites passaram, 2 barrados por falta de dado |
-| Tarefa 2 | Funil de etapas encadeadas (`filtrar_em_etapas`) | **entregue com tela** — construtor, funil ao vivo, XLSX |
-| Tarefa 2 · fluxo guiado | itens (1) colunas no resultado e (4) modelo sem gerar lista | **entregues**; (2) e (3) aguardam desenho |
-| Fase 3 | Métricas e saúde de dados | **entregue** — `/saude-dos-dados` com `v_saude_dados` e `v_panorama` |
-| Fase 5 | Interface | completa: + `/iniciativas`, `/iniciativas/nova`, `/listas`, `/saude-dos-dados` |
+| Tarefa 0-B | Espelho de MemberKit/MemberClass/Sellflux | rodou · MK 1.439 · MC 11.197 · SF 35.697 |
+| Tarefa 1 | Motor de iniciativas: filtros, funil, 8 eixos de score | entregue; 6 de 8 aceites |
+| Tarefa 2 | Funil de etapas encadeadas (`filtrar_em_etapas`) | entregue com tela |
+| Tarefa 2 · (1) e (4) | colunas no resultado · modelo sem gerar lista | **entregues**, 10/10 aceites |
+| Tarefa 2 · (2) e (3) | múltiplas plataformas por etapa · de-para | **desenhados e aprovados**, não implementados |
+| Fase 3 | Métricas e saúde de dados | entregue — `/saude-dos-dados` |
+| Fase 5 | Interface | 6 telas; o fluxo guiado **ainda não** é o caminho principal |
 | Fase 6 | Ciclo fechado | não iniciada |
 
-**Tabelas e volume (28/08 00h):** `pessoa` 1.293 · `pessoa_identificador` 5.197 ·
-`transacao` 1.302 · `crm_snapshot` 1.123 · `espelho_sellflux` 19.949 ·
-`espelho_memberclass` 11.197 · `espelho_memberkit` 1.439 ·
-`saude_disparo` 1.237 · `engajamento` 380 · `staging_assiny` 1.311 ·
-`staging_generico` 1.286 · `lista_item` 133 · `campo_filtravel` 42 ·
-`recorte` 9 · `projeto` 9 · `perfil_peso` 7 · `integracao` 5 ·
-`user_profiles` 4 · `importacao` 3 · `integracao_execucao` 36 ·
-`fonte_importacao` 1 · `iniciativa` 2 · `lista` 2 · `modelo_fluxo` 1 ·
-**vazias:** `disparo_registro`, `participacao`, `documento`.
+**Volume medido em 27/08 17h** (uma medição só, para não misturar horários):
+`espelho_sellflux` 35.697 · `espelho_memberclass` 11.197 · `pessoa_identificador`
+5.546 · `espelho_memberkit` 1.439 · `pessoa` 1.293 · `saude_disparo` 1.237 ·
+`crm_snapshot` 1.217 (**567 com `props`/`props_deals`, 650 sem**) ·
+`transacao` 1.302 · `engajamento` 380 · `lista_item` 233 · `campo_filtravel` 41
+(**0 com fonte nativa**) · `integracao_execucao` 35 (**0 presas**) ·
+`iniciativa` 3 · `lista` 2 · `modelo_fluxo` 1 · **76 pessoas sem `crm_snapshot`**
+(todas com e-mail, nenhuma com `hubspot_id` — "não achou no HubSpot" é resposta
+legítima, não falha).
 
-**A primeira lista existe:** 133 pessoas, iniciativa "Corujão · recuperar
-perdido (agosto)". O funil dela: 1.293 → 99 em cadência automática → 18 com
-falha de entrega → 296 perdidos há ≤ 15 dias → 549 sem HubSpot → 193 sem
-negócio em IS/AE → 5 com E-cont → **133**.
-
-**Funções de negócio no banco:** `ingerir_assiny` · `ingerir_generico` ·
-`sugerir_fonte` · `validar_regras` · `resolver_projeto` · `pessoas_para_sync` ·
-`credencial_salvar` / `credencial_ler` · `registrar_execucao` /
-`finalizar_execucao` · `casar_espelho` · `reconciliar` (+ `_memberkit`,
-`_memberclass`, `_sellflux`) · `avaliar` · `aplicar_pesos` · `faixa_de` ·
-`chave_email` / `chave_documento` / `chave_telefone` · `resolver_colunas` /
-`valor_do_campo` / `extrair_colunas`.
-
-**Edge Functions no ar:** `qualificador-credencial-salvar` ·
-`qualificador-sync` (HubSpot + teste de conexão das 4) · `qualificador-espelhar` ·
-`qualificador-importar` · `qualificador-importar-assiny`.
-
-**Publicado em 27/08 23h10** (Version `7bad54e8`): as telas do motor de
-iniciativas, a rota `/saude-dos-dados` e o conserto do deep link. Aceite ponta a
-ponta no ar em `docs/telas-iniciativas.md` — 8 de 8 itens, zero erro HTTP.
-
-**Cruzamento medido** (`casar_espelho`): Sellflux 1.099 pessoas (1.074 por
-e-mail, 25 por telefone) · MemberClass 324 · MemberKit 56. Todos por e-mail na
-prática — ver a armadilha da Sellflux na seção 5.
+**Decisões do Raphael já tomadas** (registradas na seção 9 de
+`docs/tarefa-2-multiplas-plataformas-e-de-para.md`, não reabrir): desempate
+ternário com `sem_dado` que não vota · `algum` como padrão do quantificador ·
+identidade fora do de-para editável · um nível de combinador, sem aninhamento.
 
 **A MemberClass reconciliou.** `engajamento` tem 380 (324 MemberClass + 56
-MemberKit) e `saude_disparo` 1.237 — 96% da base. Nenhuma execução presa.
-Como filtro, a MemberClass agora sustenta: 219 pessoas com 1+ aula, 188 com 3+.
+MemberKit) e `saude_disparo` 1.237 — 96% da base. Como filtro ela sustenta:
+219 pessoas com 1+ aula, 188 com 3+.
+
+**Cruzamento medido** (`casar_espelho`): Sellflux 1.099 pessoas (1.074 por
+e-mail, 25 por telefone) · MemberClass 324 · MemberKit 56 — ver a armadilha da
+Sellflux na seção 5.
+
+**O re-sync do HubSpot está pela metade, e morreu de estouro.**
+`config.props_negocio` tem 19 props (as 6 do leadscore + `caixa_disponivel` +
+`investimento_disponivel`), mas `caixa_disponivel` e `investimento_disponivel`
+estão em **zero**: entraram no config depois da última leitura, e o Batch Read do
+HubSpot **ignora property inexistente sem erro**. O config já está certo; falta
+reler.
+
+O re-sync **rodou pela Edge Function**, disparado pela tela em 27/08 15h29.
+Gravou 1.217 linhas e morreu com **HTTP 546 `WORKER_RESOURCE_LIMIT`** por volta
+de 200 s, **antes** de chamar `registrar_execucao` — daí a escrita aparecer em
+`crm_snapshot.sync_em` e a execução não aparecer em `integracao_execucao`.
+Não adianta "reler pela função": **a função não aguenta a base inteira.** O
+`qualificador-sync` precisa ser fatiado e retomável, igual ao espelhamento.
+
+**Funções de negócio no banco** (43, conferidas no `pg_proc` em 27/08):
+`ingerir_assiny` · `ingerir_generico` · `sugerir_fonte` · `validar_regras` ·
+`resolver_projeto` · `pessoas_para_sync` · `credencial_salvar` / `credencial_ler` ·
+`registrar_execucao` / `finalizar_execucao` · `casar_espelho` · `reconciliar`
+(+ `_memberkit`, `_memberclass`, `_sellflux`) · `avaliar` · `aplicar_pesos` ·
+`faixa_de` · `filtrar_em_etapas` / `campo_bate` / `funil` / `pessoas_da_etapa` /
+`gerar_lista` · `resolver_colunas` / `valor_do_campo` / `extrair_colunas` ·
+`chave_email` / `chave_documento` / `chave_telefone` · `norm_*` · `como_*` ·
+`itens_de` · `txt_array` · `valores_do_campo` · `extrair`.
+
+**Edge Functions no ar:** `qualificador-credencial-salvar` ·
+`qualificador-sync` (HubSpot + teste de conexão das 4; v4 = o que está no repo) ·
+`qualificador-espelhar` · `qualificador-importar` · `qualificador-importar-assiny`.
 
 **Publicado em 28/08 00h20** (Version `be987f5a`): as colunas trazidas pelo funil
 chegam na prévia e no XLSX, e o fluxo pode ser salvo como modelo sem gerar lista.
-Ver `docs/tarefa-2-colunas-e-modelos.md` — 10 de 10 aceites.
-
-**Conferido em 28/08 (sessão de nuvem, só leitura).** Números reais medidos:
-`crm_snapshot` 1.217 (567 com `props`/`props_deals`, **650 nulos**) ·
-`lista_item` 233 · `iniciativa` 3 · `modelo_fluxo` 1 (com colunas, `de_para` vazio) ·
-`campo_filtravel` 41 · 76 pessoas sem `crm_snapshot` (todas com e-mail, nenhuma
-com `hubspot_id` — "não achou no HubSpot" é resposta legítima).
-
-**O re-sync do HubSpot está pela metade — e morreu de estouro, não de escrita
-direta.** `config.props_negocio` já tem as 18 props e `caixa_disponivel` está em
-**zero**: os negócios lidos naquele re-sync foram buscados antes da migration 50
-corrigir o nome, e o Batch Read do HubSpot **ignora property inexistente sem
-erro**. O config de hoje já está certo; falta reler.
-
-Correção de diagnóstico (a sessão de nuvem leu como "escrita direta por SQL"):
-o re-sync **rodou pela Edge Function**, disparado pela tela `/integracoes` em
-27/08 15h29. Ele gravou 1.217 linhas e então morreu com **HTTP 546
-`WORKER_RESOURCE_LIMIT`** por volta de 200 s, **antes** de chamar
-`registrar_execucao`. Por isso a escrita aparece em `crm_snapshot.sync_em` e a
-execução não aparece em `integracao_execucao` — e a tela de saúde não a enxerga.
-
-A conclusão muda: não adianta "reler pela função". **A função não aguenta a base
-inteira.** O `qualificador-sync` precisa ser fatiado e retomável antes do próximo
-re-sync, igual ao espelhamento — o item 4 da seção 4 agora vale para os dois.
 
 ## 3b. A regra que a Tarefa 0-B estabeleceu
 
@@ -287,13 +282,27 @@ do dado exclui, ou não.
 
 ## 6. Migrations
 
-Aplicadas via MCP (`apply_migration`), registradas em
-`supabase_migrations.schema_migrations`. **Os `.sql` ainda não estão no repo.**
-Para trazê-los:
+**As 53 migrations do schema `qualificador` agora estão no repo**, em
+`supabase/migrations/`, nomeadas `<version>_<name>.sql`. Extraídas de
+`supabase_migrations.schema_migrations.statements` em 27/08 — é o SQL exato que
+foi aplicado, comentários inclusive. Antes disso o banco era a única cópia, e o
+`main` não reproduzia o schema.
 
-```bash
-supabase link --project-ref qevnfgopjupsmwvflcza && supabase db pull --schema qualificador
+Aplicadas via MCP (`apply_migration`). Quem aplicar uma nova **precisa trazer o
+`.sql` para o repo no mesmo commit**, senão o repo volta a divergir do banco.
+Para reextrair tudo do zero, sem depender do CLI (que continua sem token):
+
+```sql
+select json_agg(json_build_object(
+         'arquivo', version || '_' || name || '.sql',
+         'sql', array_to_string(statements, E'\n\n')
+       ) order by version)::text
+from supabase_migrations.schema_migrations where name like 'qualificador%';
 ```
+
+O resultado estoura o limite do MCP e é salvo em arquivo — processe com
+`json.loads(..., strict=False)`, porque o envelope traz caracteres de controle
+literais dentro da string.
 
 Nomear sempre `qualificador_AAAAMMDD_NN_descricao`, com `NN` conferido em
 `list_migrations` — ver seção 0, regra 3.
