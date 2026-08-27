@@ -81,15 +81,23 @@ branch pendente — `main-j9m1xx` já está contido no `main`.
 | Fase 5 | Interface | **o fluxo guiado é o caminho principal**; as 6 telas viraram "Avançado" |
 | Fase 6 | Ciclo fechado | não iniciada |
 
-**Volume medido em 27/08 17h** (uma medição só, para não misturar horários):
-`espelho_sellflux` 35.697 · `espelho_memberclass` 11.197 · `pessoa_identificador`
-5.546 · `espelho_memberkit` 1.439 · `pessoa` 1.293 · `saude_disparo` 1.237 ·
-`crm_snapshot` 1.217 (**567 com `props`/`props_deals`, 650 sem**) ·
-`transacao` 1.302 · `engajamento` 380 · `lista_item` 233 · `campo_filtravel` 55
-(**14 com fonte nativa**) · `integracao_execucao` 35 (**0 presas**) ·
-`iniciativa` 3 · `lista` 2 · `modelo_fluxo` 1 · **76 pessoas sem `crm_snapshot`**
-(todas com e-mail, nenhuma com `hubspot_id` — "não achou no HubSpot" é resposta
-legítima, não falha).
+**Volume medido em 27/08 18h**, depois da importação das bases do Raphael e da
+reconciliação das três fontes:
+`espelho_sellflux` 35.697 · `espelho_memberclass` 11.197 · `pessoa` **4.430** ·
+`transacao` 4.947 · `saude_disparo` **4.241 (95,7% da base)** · `espelho_memberkit`
+1.439 · `crm_snapshot` 1.217 (567 com `props`) · `engajamento` **437**
+(342 MemberClass + 95 MemberKit) · `campo_filtravel` 55 (14 com fonte nativa) ·
+`lista_item` 233 · `iniciativa` 1 · `lista` 1 · `modelo_fluxo` 2.
+
+**A base triplicou em 27/08 17h37** — o Raphael importou "Compras iniciAmazon
+90D" (4.489 lidas, 3.318 novas) e "teste 1.1" (1.853 lidas, 327 novas).
+
+**Reconciliar não é reespelhar.** Depois daquela importação, os espelhos já
+tinham o dado das 4.430 pessoas, mas `engajamento` e `saude_disparo` ainda eram
+os da base de 1.293. `qualificador.reconciliar('<fonte>')` é **SQL puro, roda em
+segundos e não faz uma chamada HTTP** — levou `saude_disparo` de 1.237 para 4.241
+e `engajamento` de 380 para 437. **Toda importação nova pede isso**, e não pede
+espelhamento.
 
 **Decisões do Raphael já tomadas** (registradas na seção 9 de
 `docs/tarefa-2-multiplas-plataformas-e-de-para.md`, não reabrir): desempate
@@ -234,6 +242,12 @@ do dado exclui, ou não.
   Postgres ao recriar função. Foi assim que `credencial_ler` — que devolve o token
   do HubSpot em texto puro — voltou a ser executável por `authenticated` depois de
   a migration 10 tê-la revogado. **Revogar depois de cada replace não é opcional.**
+- **Importar não reconcilia.** A ingestão cria `pessoa` e `transacao`, e para
+  por aí: `engajamento` e `saude_disparo` continuam com o casamento da base
+  anterior, **sem erro nenhum**. Depois de toda importação, rodar
+  `qualificador.reconciliar('memberkit' | 'memberclass' | 'sellflux')` — é SQL
+  puro, segundos, zero HTTP. Foi o que faltava depois da importação de 27/08:
+  os espelhos estavam certos e `saude_disparo` cobria só 28% da base nova.
 - **`props_deals` é indexado por ID DE NEGÓCIO, não por property.** A estrutura
   é `{deal_id: {property: valor}}`. Ler `props_deals->'origem_de_trafego'`
   devolve null **sem erro**, e todo filtro e coluna sobre negócio vira vazio em
@@ -285,8 +299,13 @@ do dado exclui, ou não.
   `fontes.ts`. Mudar uma sem a outra faz o cruzamento parar de casar **em silêncio**.
 - **Sellflux: `email` vem `null` em muitos leads** — nunca filtrar lead por
   e-mail exato, foi o bug que fazia a integração "não conferir nada". Mas a
-  previsão de que ela cruzaria *majoritariamente por telefone* **estava errada**:
-  medido em `casar_espelho`, são 1.074 por e-mail contra 25 por telefone.
+  previsão de que ela cruzaria *majoritariamente por telefone* **estava errada**,
+  e continua errada na base grande: medido em `casar_espelho` sobre 4.430 pessoas,
+  são **4.211 por e-mail contra 30 por telefone**. O critério de aceite 4 da
+  Tarefa 0-B ("espera-se que a maioria case por telefone") não se confirma — o
+  espelho guarda telefone de 35.575 dos 35.697 leads, então não é falta de dado:
+  é que o e-mail casa antes, e a prioridade e-mail → documento → telefone está
+  certa.
   `espelho_memberclass`, essa sim, não traz telefone nenhum (0 de 11.197).
 - **MemberClass: usar `/api/v1/student/report`**, o relatório do tenant inteiro.
   `/user/informations?email=…` devolve 404 quando não acha, e todo "não tem conta"
