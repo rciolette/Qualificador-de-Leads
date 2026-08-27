@@ -13,9 +13,9 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Card, CardContent } from '@/components/ui/card'
+import { SeletorDeCampo } from '@/components/SeletorDeCampo'
 import {
-  Select, SelectContent, SelectGroup, SelectItem, SelectLabel,
-  SelectTrigger, SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
@@ -118,6 +118,37 @@ function CartaoEtapa({
     aoAtualizar({ condicoes: condicoes.map((c, i) => (i === k ? { ...c, ...m } : c)) })
   }
 
+  /**
+   * Escolher o campo muda TRÊS coisas — a condição, a coluna trazida e (se
+   * estiver vazio) o rótulo da etapa. Tem que ser uma atualização só.
+   *
+   * Eram três chamadas de `aoAtualizar` em sequência, e cada uma montava o
+   * objeto a partir do `etapa` do render atual: a última sobrescrevia as
+   * anteriores. O sintoma era silencioso e enganoso — a coluna aparecia, o
+   * rótulo aparecia, e a condição ficava vazia. O funil então cortava todo
+   * mundo, porque uma condição sem campo nunca é satisfeita.
+   */
+  function escolherCampo(k: number, novo: CampoFiltravel) {
+    const cols = etapa.colunas ?? []
+    aoAtualizar({
+      condicoes: condicoes.map((c, i) => (i === k ? {
+        ...c,
+        fonte: novo.fonte,
+        campo: novo.caminho,
+        operador: novo.operadores[0] ?? '',
+        valor: undefined,
+        // só o negócio é coleção por pessoa; nas outras fontes não faz sentido
+        quantificador: novo.fonte === 'hubspot_negocio'
+          ? ('algum' as const)
+          : undefined,
+      } : c)),
+      // quem filtra por um campo quase sempre quer vê-lo na planilha
+      colunas: cols.includes(novo.id) ? cols : [...cols, novo.id],
+      // o rótulo só é sugerido enquanto o usuário não escreveu o dele
+      ...(etapa.rotulo ? {} : { rotulo: novo.rotulo }),
+    })
+  }
+
   function addCondicao() {
     aoAtualizar({ condicoes: [...condicoes, { ...CONDICAO_VAZIA }] })
   }
@@ -181,16 +212,10 @@ function CartaoEtapa({
               condicao={cond}
               indice={k}
               podeRemover={condicoes.length > 1}
-              porGrupo={porGrupo}
               campos={campos}
-              etapaSemRotulo={!etapa.rotulo}
               aoMudar={(m) => mudarCondicao(k, m)}
-              aoRotular={(r) => aoAtualizar({ rotulo: r })}
+              aoEscolherCampo={(novo) => escolherCampo(k, novo)}
               aoRemover={() => tirarCondicao(k)}
-              aoTrazerColuna={(id) => {
-                const atuais = etapa.colunas ?? []
-                if (!atuais.includes(id)) aoAtualizar({ colunas: [...atuais, id] })
-              }}
             />
           ))}
         </div>
@@ -231,19 +256,16 @@ function CartaoEtapa({
 }
 
 function LinhaCondicao({
-  condicao, indice, podeRemover, porGrupo, campos, etapaSemRotulo,
-  aoMudar, aoRotular, aoRemover, aoTrazerColuna,
+  condicao, indice, podeRemover, campos,
+  aoMudar, aoEscolherCampo, aoRemover,
 }: {
   condicao: Condicao
   indice: number
   podeRemover: boolean
-  porGrupo: Map<string, CampoFiltravel[]>
   campos: CampoFiltravel[]
-  etapaSemRotulo: boolean
   aoMudar: (m: Partial<Condicao>) => void
-  aoRotular: (r: string) => void
+  aoEscolherCampo: (campo: CampoFiltravel) => void
   aoRemover: () => void
-  aoTrazerColuna: (id: string) => void
 }) {
   const campo = campos.find((c) => c.caminho === condicao.campo && c.fonte === condicao.fonte)
   const precisaValor = condicao.operador && !SEM_VALOR.has(condicao.operador)
@@ -272,7 +294,7 @@ function LinhaCondicao({
     <div className="rounded-lg border border-border p-3">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-micro uppercase text-muted-foreground">
-          {indice === 0 ? 'Condição' : `Condição ${indice + 1}`}
+          {podeRemover ? `${indice + 1}ª condição` : 'Condição'}
         </span>
         {podeRemover && (
           <button onClick={aoRemover} aria-label="Remover condição"
@@ -285,34 +307,11 @@ function LinhaCondicao({
       <div className="grid gap-2 sm:grid-cols-3">
         <div className="space-y-1">
           <Label className="text-micro uppercase text-muted-foreground">Onde consultar</Label>
-          <Select
-            value={campo ? `${campo.fonte}|${campo.caminho}` : ''}
-            onValueChange={(v) => {
-              const [fonte, caminho] = v.split('|')
-              const novo = campos.find((c) => c.fonte === fonte && c.caminho === caminho)
-              aoMudar({
-                fonte, campo: caminho,
-                operador: novo?.operadores[0] ?? '',
-                valor: undefined,
-                quantificador: fonte === 'hubspot_negocio' ? 'algum' : undefined,
-              })
-              if (etapaSemRotulo && novo?.rotulo) aoRotular(novo.rotulo)
-              // quem filtra por um campo quase sempre quer vê-lo na planilha
-              if (novo) aoTrazerColuna(novo.id)
-            }}
-          >
-            <SelectTrigger><SelectValue placeholder="escolha o campo" /></SelectTrigger>
-            <SelectContent>
-              {[...porGrupo.entries()].map(([grupo, lista]) => (
-                <SelectGroup key={grupo}>
-                  <SelectLabel>{grupo}</SelectLabel>
-                  {lista.map((c) => (
-                    <SelectItem key={c.id} value={`${c.fonte}|${c.caminho}`}>{c.rotulo}</SelectItem>
-                  ))}
-                </SelectGroup>
-              ))}
-            </SelectContent>
-          </Select>
+          <SeletorDeCampo
+            campos={campos}
+            valor={campo ? `${campo.fonte}|${campo.caminho}` : ''}
+            aoEscolher={aoEscolherCampo}
+          />
         </div>
 
         <div className="space-y-1">

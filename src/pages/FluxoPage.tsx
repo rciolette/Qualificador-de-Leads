@@ -461,6 +461,7 @@ export function FluxoPage() {
                       </div>
                       <input type="range" min={0} max={10} value={pesos[eixo.chave] ?? 0}
                         onChange={(e) => setPesos({ ...pesos, [eixo.chave]: Number(e.target.value) })}
+                        aria-label={`Peso de ${eixo.rotulo}`}
                         className="mt-1 w-full accent-primary" />
                     </div>
                     <span className={cn('w-6 text-right text-label tabular-nums',
