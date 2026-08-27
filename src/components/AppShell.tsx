@@ -1,10 +1,20 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { Activity, Database, FileUp, ListChecks, LogOut, Plug, Target } from 'lucide-react'
+import {
+  Activity, ChevronDown, Database, FileUp, ListChecks, LogOut, Plug, Route, Target,
+} from 'lucide-react'
+import { useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-const NAV = [
+/**
+ * O fluxo guiado é o caminho principal — é a jornada que o Raphael faz de
+ * verdade: sobe a base, cruza, estreita, exporta. As telas antigas continuam
+ * existindo, mas como peças avulsas: viraram "Avançado".
+ */
+const PRINCIPAL = { para: '/fluxo', rotulo: 'Montar uma lista', icone: Route }
+
+const AVANCADO = [
   { para: '/importar', rotulo: 'Importar', icone: FileUp },
   { para: '/integracoes', rotulo: 'Integrações', icone: Plug },
   { para: '/saude-dos-dados', rotulo: 'Saúde dos dados', icone: Activity },
@@ -12,6 +22,44 @@ const NAV = [
   { para: '/listas', rotulo: 'Listas geradas', icone: ListChecks },
   { para: '/catalogo', rotulo: 'Catálogo', icone: Database },
 ]
+
+const NAV = [PRINCIPAL, ...AVANCADO]
+
+function MenuAvancado() {
+  const [aberto, setAberto] = useState(false)
+  return (
+    <div className="relative" onMouseLeave={() => setAberto(false)}>
+      <button
+        onClick={() => setAberto(!aberto)}
+        onMouseEnter={() => setAberto(true)}
+        aria-expanded={aberto}
+        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-label text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+      >
+        Avançado
+        <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+      </button>
+      {aberto && (
+        <div className="absolute left-0 top-full z-50 w-56 rounded-xl border border-border bg-background p-1 shadow-lg">
+          {AVANCADO.map(({ para, rotulo, icone: Icone }) => (
+            <NavLink
+              key={para}
+              to={para}
+              onClick={() => setAberto(false)}
+              className={({ isActive }) =>
+                cn('flex items-center gap-2 rounded-lg px-3 py-2 text-label transition-colors',
+                  isActive ? 'bg-muted text-foreground'
+                           : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground')
+              }
+            >
+              <Icone className="h-3.5 w-3.5" aria-hidden />
+              {rotulo}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export function AppShell() {
   const { user, papel, sair } = useAuth()
@@ -26,23 +74,22 @@ export function AppShell() {
           </div>
 
           <nav className="hidden flex-1 items-center gap-1 md:flex">
-            {NAV.map(({ para, rotulo, icone: Icone }) => (
-              <NavLink
-                key={para}
-                to={para}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-label transition-colors',
-                    isActive
-                      ? 'bg-muted text-foreground'
-                      : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
-                  )
-                }
-              >
-                <Icone className="h-3.5 w-3.5" aria-hidden />
-                {rotulo}
-              </NavLink>
-            ))}
+            <NavLink
+              to={PRINCIPAL.para}
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-label transition-colors',
+                  isActive
+                    ? 'bg-primary/10 font-medium text-primary'
+                    : 'text-foreground hover:bg-muted/50',
+                )
+              }
+            >
+              <PRINCIPAL.icone className="h-3.5 w-3.5" aria-hidden />
+              {PRINCIPAL.rotulo}
+            </NavLink>
+
+            <MenuAvancado />
           </nav>
 
           <div className="ml-auto flex items-center gap-3">

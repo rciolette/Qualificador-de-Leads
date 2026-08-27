@@ -16,7 +16,7 @@ export function LoginPage() {
 
   // quem colou /listas e caiu aqui por não estar logado volta para /listas,
   // não para a home. O destino vem carimbado por `Protegido`.
-  const destino = (local.state as { de?: string } | null)?.de ?? '/integracoes'
+  const destino = (local.state as { de?: string } | null)?.de ?? '/fluxo'
   if (user) return <Navigate to={destino} replace />
 
   async function aoEnviar(e: FormEvent) {

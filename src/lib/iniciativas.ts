@@ -1,15 +1,40 @@
 import { exigirSupabase } from './supabase'
 import type { TimeComercial, TipoIniciativa, FaseIniciativa } from './tipos'
 
-/** Uma etapa do funil montada na tela. */
-export interface Etapa {
-  id: string
-  rotulo: string
+/** Uma condição dentro de uma etapa: um campo, um operador, um valor. */
+export interface Condicao {
   fonte: string
   campo: string
   operador: string
   valor?: unknown
+  /**
+   * Só vale para `fonte: 'hubspot_negocio'`, que é a única coleção por pessoa.
+   * 'algum' (padrão) — basta um negócio satisfazer.
+   * 'todo'           — todos precisam satisfazer.
+   * 483 das 567 pessoas têm negócios que discordam entre si: o padrão decide muito.
+   */
+  quantificador?: 'algum' | 'todo'
+}
+
+/** Uma etapa do funil montada na tela. */
+export interface Etapa {
+  id: string
+  rotulo: string
   ativa: boolean
+  /**
+   * As condições da etapa. O motor também aceita o formato antigo
+   * (fonte/campo/operador/valor direto na etapa) e o embrulha como condição
+   * única — nenhum modelo salvo precisou ser migrado.
+   */
+  condicoes?: Condicao[]
+  /** 'qualquer' (padrão) = união · 'todas' = interseção. Vale para a etapa. */
+  combinador?: 'qualquer' | 'todas'
+
+  // ---- formato antigo, preservado para os modelos já salvos
+  fonte?: string
+  campo?: string
+  operador?: string
+  valor?: unknown
   /** true = property nativa do HubSpot, lida de props / props_deals */
   nativo?: boolean
   /**
@@ -158,6 +183,31 @@ export const OPERADORES: Record<string, string> = {
 export const SEM_VALOR = new Set(['preenchido', 'vazio', 'e_verdadeiro', 'e_falso'])
 
 /**
+ * Traz uma etapa do formato antigo para o novo, sem perder nada. O motor aceita
+ * os dois, mas a tela só sabe editar o novo — converter na leitura evita ter
+ * duas UIs.
+ */
+export function normalizarEtapa(e: Etapa): Etapa {
+  if (Array.isArray(e.condicoes)) return e
+  const { fonte, campo, operador, valor, quantificador, ...resto } =
+    e as Etapa & { quantificador?: 'algum' | 'todo' }
+  return {
+    ...resto,
+    combinador: e.combinador ?? 'qualquer',
+    condicoes: campo
+      ? [{ fonte: fonte ?? '', campo, operador: operador ?? '', valor, quantificador }]
+      : [],
+  }
+}
+
+export const condicoesDe = (e: Etapa): Condicao[] =>
+  Array.isArray(e.condicoes)
+    ? e.condicoes
+    : e.campo
+      ? [{ fonte: e.fonte ?? '', campo: e.campo, operador: e.operador ?? '', valor: e.valor }]
+      : []
+
+/**
  * As colunas do resultado são a união do que cada etapa ativa trouxe, na ordem em
  * que apareceram. Etapa desligada não contribui — senão o arquivo teria coluna de
  * um filtro que o usuário desistiu de aplicar.
@@ -210,8 +260,13 @@ export async function listarCampos(): Promise<CampoFiltravel[]> {
 
 /** Valores distintos de um campo, para o seletor não exigir digitação exata. */
 export async function valoresDe(campo: CampoFiltravel, limite = 200): Promise<string[]> {
+  // a fonte é obrigatória para property crua: ela mora em props/props_deals,
+  // não em v_pessoa_completa, e sem isso o seletor vinha vazio
   const { data, error } = await exigirSupabase()
-    .rpc('valores_do_campo', { p_caminho: campo.caminho, p_limite: limite })
+    .rpc('valores_do_campo', {
+      p_caminho: campo.caminho, p_limite: limite,
+      p_fonte: campo.fonte.startsWith('hubspot_') ? campo.fonte : null,
+    })
   if (error) throw error
   return (data ?? []).map((r: { valor: string }) => r.valor)
 }

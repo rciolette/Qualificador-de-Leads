@@ -3,7 +3,7 @@
 Instruções para qualquer sessão de agente neste repositório.
 **Este arquivo é o ponto de sincronia entre sessões.** Quem terminar uma tarefa
 atualiza a seção 3 aqui antes de sair.
-Última atualização: 28/08/2026 — desenho dos itens (2) e (3) da Tarefa 2.
+Última atualização: 27/08/2026 — o fluxo guiado virou o caminho principal.
 
 ## 0. Protocolo entre sessões (leia primeiro)
 
@@ -76,17 +76,17 @@ branch pendente — `main-j9m1xx` já está contido no `main`.
 | Tarefa 1 | Motor de iniciativas: filtros, funil, 8 eixos de score | entregue; 6 de 8 aceites |
 | Tarefa 2 | Funil de etapas encadeadas (`filtrar_em_etapas`) | entregue com tela |
 | Tarefa 2 · (1) e (4) | colunas no resultado · modelo sem gerar lista | **entregues**, 10/10 aceites |
-| Tarefa 2 · (2) e (3) | múltiplas plataformas por etapa · de-para | desenhados e aprovados · **passos 1 e 2 no ar** (migration 52) |
+| Tarefa 2 · (2) e (3) | múltiplas plataformas por etapa · de-para | passos **1, 2, 3 e 5 no ar**; falta o 4 (vocabulário) |
 | Fase 3 | Métricas e saúde de dados | entregue — `/saude-dos-dados` |
-| Fase 5 | Interface | 6 telas; o fluxo guiado **ainda não** é o caminho principal |
+| Fase 5 | Interface | **o fluxo guiado é o caminho principal**; as 6 telas viraram "Avançado" |
 | Fase 6 | Ciclo fechado | não iniciada |
 
 **Volume medido em 27/08 17h** (uma medição só, para não misturar horários):
 `espelho_sellflux` 35.697 · `espelho_memberclass` 11.197 · `pessoa_identificador`
 5.546 · `espelho_memberkit` 1.439 · `pessoa` 1.293 · `saude_disparo` 1.237 ·
 `crm_snapshot` 1.217 (**567 com `props`/`props_deals`, 650 sem**) ·
-`transacao` 1.302 · `engajamento` 380 · `lista_item` 233 · `campo_filtravel` 41
-(**0 com fonte nativa**) · `integracao_execucao` 35 (**0 presas**) ·
+`transacao` 1.302 · `engajamento` 380 · `lista_item` 233 · `campo_filtravel` 55
+(**14 com fonte nativa**) · `integracao_execucao` 35 (**0 presas**) ·
 `iniciativa` 3 · `lista` 2 · `modelo_fluxo` 1 · **76 pessoas sem `crm_snapshot`**
 (todas com e-mail, nenhuma com `hubspot_id` — "não achou no HubSpot" é resposta
 legítima, não falha).
@@ -176,11 +176,19 @@ acontece em SQL (`qualificador.reconciliar`). Só o HubSpot fica em
    `campo_bate` era `false`, virou `true`; `valor_do_campo` era `null`, virou
    `["Forms Onboarding Nath","IniciAmazon | Nath"]`.
    Ver `docs/tarefa-2-passos-1-2-condicao-ternaria.md`.
-5b-ter. **Passo 3 do desenho: catalogar as props em `campo_filtravel`.** As 19 de
-   negócio e as 36 de contato, com `fonte` nativa. O Raphael confirmou a ordem
-   (opção B): consertar primeiro, catalogar depois. O conserto está feito, então
-   este é o próximo passo. Hoje `campo_filtravel` tem 41 campos e **0** com fonte
-   nativa.
+5b-ter. ~~Passo 3: catalogar as props em `campo_filtravel`.~~ **Feito**,
+   migration 53: 14 campos nativos (6 de contato, 8 de negócio). Ficaram de fora
+   os de 0% de cobertura, os que já existem como derivados, e `dealstage` /
+   `pipeline`, que são IDs e esperam o vocabulário do passo 4.
+   `valores_do_campo` também passou a ler props (migration 54) — sem isso os 14,
+   todos `enum`, viriam com seletor vazio.
+5c. ~~O fluxo guiado ainda não é o caminho principal.~~ **Fechado em 27/08.**
+   `/` abre `/fluxo`, a nav tem "Montar uma lista" em destaque e as 6 telas
+   antigas num menu "Avançado". O passo 1 do fluxo **começa por upload** e reusa
+   `analisarArquivos` + `MapeamentoArquivo`. Ver `docs/fluxo-guiado.md`.
+   **Não testado:** montar uma etapa clicando no seletor de campos — o Radix
+   Select não responde a evento sintético no navegador headless. Validei
+   carregando um modelo já no formato novo. Vale um teste manual.
 6. Decidir `ECONT CONTABILIDADE DO ECOMMERCE` (2.370 transações fora do catálogo,
    hoje bloqueia a importação) e a `area_membros` de `ECONT BH`.
 7. Decidir qual escala de classificação manda: `classificacao_leadscore` (5),
@@ -338,7 +346,6 @@ Nomear sempre `qualificador_AAAAMMDD_NN_descricao`, com `NN` conferido em
 - `docs/tarefa-2-colunas-e-modelos.md` — itens (1) e (4) da spec, entregues
 - `docs/tarefa-2-multiplas-plataformas-e-de-para.md` — o desenho de (2) e (3), com as 4 decisões
 - `docs/tarefa-2-passos-1-2-condicao-ternaria.md` — passos 1 e 2 do desenho, entregues
-- `docs/tarefa-2-multiplas-plataformas-e-de-para.md` — **desenho** dos itens (2) e
-  (3), o bug latente do `props_deals` e 4 perguntas para o Raphael
+- `docs/fluxo-guiado.md` — o fluxo vira o caminho principal (passos 3 e 5)
 - Projeto Claude "Qualificador de Leads" → `claude/mapa-apis-v1.md` (as 4 APIs) e
   `claude/estado-do-projeto.md` (espelho desta seção 3, para quem não abre o repo)

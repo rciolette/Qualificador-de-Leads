@@ -12,6 +12,7 @@ import { SaudePage } from '@/pages/SaudePage'
 
 import { IniciativasPage } from '@/pages/IniciativasPage'
 import { IniciativaNovaPage } from '@/pages/IniciativaNovaPage'
+import { FluxoPage } from '@/pages/FluxoPage'
 import { ListasPage } from '@/pages/ListasPage'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
@@ -129,7 +130,9 @@ export default function App() {
           <Routes>
             <Route path="/entrar" element={<LoginPage />} />
             <Route element={<Protegido />}>
-              <Route index element={<Navigate to="/integracoes" replace />} />
+              {/* o fluxo guiado é o caminho principal (docs/tarefa-2-fluxo-guiado.md) */}
+              <Route index element={<Navigate to="/fluxo" replace />} />
+              <Route path="/fluxo" element={<FluxoPage />} />
               <Route path="/importar" element={<ImportarPage />} />
               <Route path="/integracoes" element={<IntegracoesPage />} />
               {/* A tarefa 3 pediu /saude-dos-dados; /saude fica de pé porque
@@ -141,7 +144,7 @@ export default function App() {
               <Route path="/listas" element={<ListasPage />} />
               <Route path="/catalogo" element={<CatalogoPage />} />
             </Route>
-            <Route path="*" element={<Navigate to="/integracoes" replace />} />
+            <Route path="*" element={<Navigate to="/fluxo" replace />} />
           </Routes>
         </BrowserRouter>
         <Toaster position="top-right" richColors closeButton />
