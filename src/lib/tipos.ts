@@ -99,6 +99,26 @@ export interface ResultadoSync {
   mensagem?: string
 }
 
+/**
+ * Resposta de qualificador-espelhar. `status: 'continua'` significa que o worker
+ * esgotou o orçamento de 60 s e re-invocou a si mesmo — a mesma execução segue
+ * viva no banco, só a resposta HTTP voltou antes.
+ */
+export interface ResultadoEspelho {
+  fonte: string
+  status: 'concluido' | 'continua' | 'erro'
+  total_declarado?: number | null
+  linhas_espelho?: number
+  paginas?: number
+  chamadas_http?: number
+  casamento?: { casou_por: string; pessoas: number }[]
+  duracao_ms?: number
+  pagina?: number
+  execucao_id?: number
+  gravados_ate_aqui?: number
+  erro?: string
+}
+
 /** Resposta de qualificador-credencial-salvar. */
 export interface ResultadoCredencial {
   slug: string

@@ -1,7 +1,7 @@
 import { exigirSupabase, supabase, FUNCTIONS_URL } from './supabase'
 import type {
   Diagnostico, Execucao, Frescor, Importacao, Integracao, Papel, Projeto,
-  ResultadoCredencial, ResultadoImportacao, ResultadoSync,
+  ResultadoCredencial, ResultadoEspelho, ResultadoImportacao, ResultadoSync,
 } from './tipos'
 
 /** Chama uma Edge Function do Qualificador com o JWT da sessão atual. */
@@ -94,6 +94,32 @@ export function sincronizar(fonte: string, limite = 100, maxIdadeHoras = 24) {
   return chamarFuncao<ResultadoSync>('qualificador-sync', {
     fonte, limite, max_idade_horas: maxIdadeHoras,
   })
+}
+
+/** Fontes pequenas o bastante para espelhar inteiras em vez de perguntar por pessoa. */
+export const FONTES_ESPELHADAS = ['memberkit', 'memberclass', 'sellflux']
+
+/**
+ * Espelha a fonte inteira e reconcilia em SQL.
+ *
+ * A função tem orçamento de 60 s por invocação e re-invoca a si mesma quando a
+ * fonte tem mais páginas que isso. O `while` abaixo existe para o caso de essa
+ * re-invocação morrer junto com o worker: o front retoma da mesma página, na
+ * mesma linha de execução. Nunca duplica — o espelho tem chave primária.
+ */
+export async function espelhar(
+  fonte: string,
+  aoProgresso?: (pagina: number, gravados: number) => void,
+): Promise<ResultadoEspelho> {
+  let corpo: Record<string, unknown> = { fonte }
+
+  for (let tentativa = 0; tentativa < 60; tentativa++) {
+    const r = await chamarFuncao<ResultadoEspelho>('qualificador-espelhar', corpo)
+    if (r.status !== 'continua') return r
+    aoProgresso?.(r.pagina ?? 0, r.gravados_ate_aqui ?? 0)
+    corpo = { fonte, pagina_inicial: r.pagina, execucao_id: r.execucao_id }
+  }
+  throw new Error('Espelhamento não terminou em 60 retomadas — verifique o log de execução')
 }
 
 // ---------------------------------------------------------------- catálogo

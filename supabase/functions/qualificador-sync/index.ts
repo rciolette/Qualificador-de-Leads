@@ -13,17 +13,19 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import postgres from 'npm:postgres@3.4.5'
 import type { Adaptador, Alvo, Gravacao } from './contrato.ts'
 import { hubspot } from './hubspot.ts'
-import { memberkit } from './memberkit.ts'
-import { memberclass } from './memberclass.ts'
-import { sellflux } from './sellflux.ts'
 import { testar } from './teste.ts'
 
+// Tarefa 0-B: memberkit, memberclass e sellflux SAÍRAM daqui. As três fontes são
+// pequenas (a maior tem 1.433 registros) e perguntar uma pessoa por vez custava
+// 1.293 chamadas HTTP por execução para não cruzar nada. Elas agora são espelhadas
+// inteiras pela função `qualificador-espelhar` e cruzadas em SQL.
+// O HubSpot continua aqui: é a única fonte grande demais para espelhar.
 const ADAPTADORES: Record<string, Adaptador> = {
   hubspot: hubspot,
-  memberkit: memberkit,
-  memberclass: memberclass,
-  sellflux: sellflux,
 }
+
+/** Fontes que migraram para o espelho. Só o teste de conexão continua passando por aqui. */
+const ESPELHADAS = ['memberkit', 'memberclass', 'sellflux']
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -64,13 +66,8 @@ Deno.serve(async (req) => {
   }
 
   const fonte = corpo.fonte?.trim() ?? ''
-  const adaptador = ADAPTADORES[fonte]
-  if (!adaptador) {
-    return responder(
-      { erro: `Fonte desconhecida: "${fonte}"`, disponiveis: Object.keys(ADAPTADORES) },
-      400,
-    )
-  }
+  // a validação da fonte acontece depois de ler a credencial: o teste de conexão
+  // vale para as quatro fontes, mas sincronizar só vale para as que têm adaptador
 
   const limite = Math.min(Math.max(corpo.limite ?? 100, 1), 1000)
   const maxIdadeHoras = Math.max(corpo.max_idade_horas ?? 24, 0)
@@ -119,6 +116,22 @@ Deno.serve(async (req) => {
         ${fonte}, 'testar', ${d.ok ? 'ok' : 'erro'}, null, ${Date.now() - inicio},
         ${d.ok ? null : `${d.titulo}: ${d.detalhe}`})`
       return responder({ fonte, ...d }, d.ok ? 200 : 200)  // 200 sempre: o diagnóstico É a resposta
+    }
+
+    const adaptador = ADAPTADORES[fonte]
+    if (!adaptador) {
+      if (ESPELHADAS.includes(fonte)) {
+        return responder({
+          erro: `"${fonte}" não sincroniza mais por aqui — use a função qualificador-espelhar`,
+          motivo: 'A fonte é pequena: espelhar tudo e cruzar em SQL custa menos que ' +
+            'uma chamada HTTP por pessoa.',
+          funcao: 'qualificador-espelhar',
+        }, 409)
+      }
+      return responder(
+        { erro: `Fonte desconhecida: "${fonte}"`, disponiveis: Object.keys(ADAPTADORES) },
+        400,
+      )
     }
 
     // alvos: os pedidos explicitamente, ou os mais desatualizados

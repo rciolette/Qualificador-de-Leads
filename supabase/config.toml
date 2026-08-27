@@ -418,3 +418,6 @@ verify_jwt = true
 
 [functions.qualificador-credencial-salvar]
 verify_jwt = true
+
+[functions.qualificador-espelhar]
+verify_jwt = true

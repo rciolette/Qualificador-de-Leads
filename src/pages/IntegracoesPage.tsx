@@ -6,6 +6,7 @@ import { TituloPagina } from '@/components/AppShell'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   formatarData, formatarDuracao, formatarNumero,
+  espelhar, FONTES_ESPELHADAS,
   listarExecucoes, listarFrescor, listarIntegracoes, salvarCredencial, sincronizar, testarConexao,
 } from '@/lib/dados'
 import type { Diagnostico, Integracao } from '@/lib/tipos'
@@ -166,6 +167,36 @@ function CartaoIntegracao({
     onError: (e: Error) => toast.error('Não foi possível gravar', { description: e.message }),
   })
 
+  // MemberKit, MemberClass e Sellflux não perguntam mais pessoa a pessoa: espelham
+  // a fonte inteira e cruzam em SQL. O botão é o mesmo; o caminho por baixo é outro.
+  const ehEspelhada = FONTES_ESPELHADAS.includes(ig.slug)
+  const [pagina, setPagina] = useState<number | null>(null)
+
+  const espelho = useMutation({
+    mutationFn: () => espelhar(ig.slug, (p) => setPagina(p)),
+    onSettled: () => setPagina(null),
+    onSuccess: (r) => {
+      if (r.status === 'erro') {
+        toast.error(`${ig.nome_exibicao}: espelhamento interrompido`, { description: r.erro })
+        aoMudar()
+        return
+      }
+      const casou = (r.casamento ?? [])
+        .map((c) => `${c.pessoas} por ${c.casou_por}`)
+        .join(' · ')
+      toast.success(`${ig.nome_exibicao} espelhada`, {
+        description:
+          `${formatarNumero(r.linhas_espelho)} registros na fonte` +
+          ` · ${formatarNumero(r.chamadas_http)} chamadas · ${formatarDuracao(r.duracao_ms)}` +
+          (casou ? ` — cruzou ${casou}` : ' — nenhuma pessoa cruzou'),
+      })
+      aoMudar()
+    },
+    onError: (e: Error) => toast.error(`Falha ao espelhar ${ig.nome_exibicao}`, {
+      description: e.message,
+    }),
+  })
+
   const sync = useMutation({
     mutationFn: () => sincronizar(ig.slug, 100),
     onSuccess: (r) => {
@@ -302,11 +333,17 @@ function CartaoIntegracao({
               <Button
                 variant="outline"
                 className="gap-2"
-                disabled={!ig.ativa || !podeSincronizar || sync.isPending}
-                onClick={() => sync.mutate()}
+                disabled={!ig.ativa || !podeSincronizar || sync.isPending || espelho.isPending}
+                onClick={() => (ehEspelhada ? espelho.mutate() : sync.mutate())}
               >
-                <RefreshCw className={sync.isPending ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
-                {sync.isPending ? 'Sincronizando…' : 'Sincronizar'}
+                <RefreshCw
+                  className={sync.isPending || espelho.isPending ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
+                />
+                {espelho.isPending
+                  ? (pagina ? `Espelhando… página ${pagina}` : 'Espelhando…')
+                  : sync.isPending
+                    ? 'Sincronizando…'
+                    : ehEspelhada ? 'Espelhar e cruzar' : 'Sincronizar'}
               </Button>
             </div>
             {!ig.ativa && (
