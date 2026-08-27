@@ -1,13 +1,13 @@
-import { useCallback, useRef, useState, type DragEvent } from 'react'
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { TituloPagina } from '@/components/AppShell'
 import { MapeamentoArquivo } from '@/components/MapeamentoArquivo'
+import { ZonaDeUpload } from '@/components/ZonaDeUpload'
 import { formatarData, formatarNumero, listarImportacoes } from '@/lib/dados'
 import {
-  analisarArquivos, EXTENSOES_ACEITAS,
-  type Analise, type CampoCanonico,
+  analisarArquivos,
+  type Analise, type CampoCanonico, type Progresso,
 } from '@/lib/importar'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -18,8 +18,7 @@ import { cn } from '@/lib/utils'
 
 export function ImportarPage() {
   const qc = useQueryClient()
-  const [arrastando, setArrastando] = useState(false)
-  const [progresso, setProgresso] = useState<{ feitos: number; total: number; arquivo: string } | null>(null)
+  const [progresso, setProgresso] = useState<Progresso | null>(null)
   const [analises, setAnalises] = useState<Analise[]>([])
   const [campos, setCampos] = useState<CampoCanonico[]>([])
   const entrada = useRef<HTMLInputElement>(null)
@@ -27,9 +26,7 @@ export function ImportarPage() {
   const importacoes = useQuery({ queryKey: ['importacoes'], queryFn: () => listarImportacoes(20) })
 
   const analisar = useMutation({
-    mutationFn: (arquivos: File[]) => analisarArquivos(arquivos, {
-      aoProgresso: (feitos, total, arquivo) => setProgresso({ feitos, total, arquivo }),
-    }),
+    mutationFn: (arquivos: File[]) => analisarArquivos(arquivos, { aoProgresso: setProgresso }),
     onSettled: () => setProgresso(null),
     onSuccess: (r) => {
       const bons = r.analisados.filter((a) => !a.erro)
@@ -54,17 +51,6 @@ export function ImportarPage() {
     onError: (e: Error) => toast.error('Não foi possível ler os arquivos', { description: e.message }),
   })
 
-  const receber = useCallback((lista: FileList | null) => {
-    const arquivos = Array.from(lista ?? [])
-    if (arquivos.length) analisar.mutate(arquivos)
-  }, [analisar])
-
-  function aoSoltar(e: DragEvent) {
-    e.preventDefault()
-    setArrastando(false)
-    receber(e.dataTransfer.files)
-  }
-
   return (
     <>
       <TituloPagina
@@ -72,44 +58,13 @@ export function ImportarPage() {
         descricao="Arraste planilhas de qualquer origem. O app lê as colunas, propõe o de-para e só grava depois que você confirmar."
       />
 
-      <div
-        onDragOver={(e) => { e.preventDefault(); setArrastando(true) }}
-        onDragLeave={() => setArrastando(false)}
-        onDrop={aoSoltar}
-        onClick={() => entrada.current?.click()}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') entrada.current?.click() }}
-        className={cn(
-          'flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-14 text-center transition-colors',
-          arrastando
-            ? 'border-primary bg-primary/5'
-            : 'border-border hover:border-primary/50 hover:bg-muted/30',
-        )}
-      >
-        <input
-          ref={entrada}
-          type="file"
-          multiple
-          accept={EXTENSOES_ACEITAS}
-          className="hidden"
-          onChange={(e) => { receber(e.target.files); e.target.value = '' }}
-        />
-        <Upload className={cn('h-8 w-8', arrastando ? 'text-primary' : 'text-muted-foreground')} />
-        <div>
-          <p className="text-body font-medium">
-            {analisar.isPending
-              ? progresso && progresso.total > 1
-                ? `Lendo ${progresso.feitos + 1} de ${progresso.total}: ${progresso.arquivo}`
-                : 'Lendo o arquivo…'
-              : 'Arraste os arquivos aqui ou clique para escolher'}
-          </p>
-          <p className="mt-1 text-label text-muted-foreground">
-            Vários de uma vez. Planilhas em .csv, .tsv, .xlsx, .xls e .ods viram dados;
-            .md e .txt ficam anexados como contexto.
-          </p>
-        </div>
-      </div>
+      <ZonaDeUpload
+        progresso={progresso}
+        ocupado={analisar.isPending}
+        aoReceber={(arquivos) => analisar.mutate(arquivos)}
+        titulo="Arraste os arquivos aqui ou clique para escolher"
+        ajuda="Vários de uma vez. Planilhas em .csv, .tsv, .xlsx, .xls e .ods viram dados; .md e .txt ficam anexados como contexto."
+      />
 
       {analises.length > 0 && (
         <div className="mt-8 space-y-6">

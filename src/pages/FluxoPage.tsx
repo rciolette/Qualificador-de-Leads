@@ -1,17 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, ArrowRight, BookmarkPlus, Check, Database, Download, Filter,
-  ListChecks, Sparkles, Upload, Wand2,
+  ListChecks, Sparkles, Wand2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { MapeamentoArquivo } from '@/components/MapeamentoArquivo'
 import { ConstrutorEtapas } from '@/components/ConstrutorEtapas'
 import { FunilExclusao } from '@/components/FunilExclusao'
 import { formatarNumero, listarImportacoes, mostrar } from '@/lib/dados'
-import {
-  analisarArquivos, EXTENSOES_ACEITAS, type Analise, type CampoCanonico,
-} from '@/lib/importar'
+import { analisarArquivos, type Analise, type CampoCanonico, type Progresso } from '@/lib/importar'
+import { ZonaDeUpload } from '@/components/ZonaDeUpload'
 import {
   apagarModelo, calcularFunil, colunasDe, gerarLista, listarModelos, listarPerfis,
   listarRecortes, pessoasDaEtapa, resolverColunas, salvarIniciativa, salvarModelo,
@@ -58,17 +57,15 @@ export function FluxoPage() {
   const [passo, setPasso] = useState<1 | 2 | 3>(1)
 
   // ---------------------------------------------------------------- passo 1
-  const [arrastando, setArrastando] = useState(false)
-  const [progresso, setProgresso] = useState<{ feitos: number; total: number; arquivo: string } | null>(null)
+  const [progresso, setProgresso] = useState<Progresso | null>(null)
   const [analises, setAnalises] = useState<Analise[]>([])
   const [camposArquivo, setCamposArquivo] = useState<CampoCanonico[]>([])
-  const entrada = useRef<HTMLInputElement>(null)
 
   const importacoes = useQuery({ queryKey: ['importacoes'], queryFn: () => listarImportacoes(5) })
 
   const analisar = useMutation({
     mutationFn: (arquivos: File[]) => analisarArquivos(arquivos, {
-      aoProgresso: (feitos, total, arquivo) => setProgresso({ feitos, total, arquivo }),
+      aoProgresso: setProgresso,
     }),
     onSettled: () => setProgresso(null),
     onSuccess: (r) => {
@@ -88,11 +85,6 @@ export function FluxoPage() {
     onError: (e: Error) =>
       toast.error('Não foi possível ler os arquivos', { description: e.message }),
   })
-
-  const receber = useCallback((lista: FileList | null) => {
-    const arquivos = Array.from(lista ?? [])
-    if (arquivos.length) analisar.mutate(arquivos)
-  }, [analisar])
 
   // ---------------------------------------------------------------- passo 2
   const [nome, setNome] = useState('')
@@ -202,40 +194,13 @@ export function FluxoPage() {
 
       {passo === 1 && (
         <div className="space-y-6">
-          <div
-            onDragOver={(e: DragEvent) => { e.preventDefault(); setArrastando(true) }}
-            onDragLeave={() => setArrastando(false)}
-            onDrop={(e: DragEvent) => {
-              e.preventDefault(); setArrastando(false); receber(e.dataTransfer.files)
-            }}
-            onClick={() => entrada.current?.click()}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') entrada.current?.click() }}
-            className={cn(
-              'flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-16 text-center transition-colors',
-              arrastando
-                ? 'border-primary bg-primary/5'
-                : 'border-border hover:border-primary/50 hover:bg-muted/30',
-            )}
-          >
-            <input ref={entrada} type="file" multiple accept={EXTENSOES_ACEITAS}
-              className="hidden"
-              onChange={(e) => { receber(e.target.files); e.target.value = '' }} />
-            <Upload className={cn('h-9 w-9', arrastando ? 'text-primary' : 'text-muted-foreground')} />
-            <div>
-              <p className="text-body font-medium">
-                {analisar.isPending
-                  ? progresso && progresso.total > 1
-                    ? `Lendo ${progresso.feitos + 1} de ${progresso.total}: ${progresso.arquivo}`
-                    : 'Lendo o arquivo…'
-                  : 'Arraste a base de compras da Assiny aqui'}
-              </p>
-              <p className="mt-1 text-label text-muted-foreground">
-                Ou clique para escolher. O app lê as colunas e pergunta o de-para antes de gravar.
-              </p>
-            </div>
-          </div>
+          <ZonaDeUpload
+            progresso={progresso}
+            ocupado={analisar.isPending}
+            aoReceber={(arquivos) => analisar.mutate(arquivos)}
+            titulo="Arraste a base de compras da Assiny aqui"
+            ajuda="Ou clique para escolher. O app lê as colunas e pergunta o de-para antes de gravar."
+          />
 
           {analises.length > 0 && (
             <div className="space-y-6">

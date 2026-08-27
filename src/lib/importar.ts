@@ -74,17 +74,112 @@ async function token(): Promise<string> {
  * linhas × 63 colunas, e o worker tem memória de sobra para um, não para quatro.
  * Em série, cada arquivo pega um worker limpo — e um que falhe não leva os outros.
  */
+/** O que a tela mostra enquanto o arquivo é lido. */
+export interface Progresso {
+  arquivo: string
+  /** 0-based: qual arquivo da fila */
+  indice: number
+  total: number
+  fase: 'contando' | 'enviando' | 'processando' | 'pronto'
+  /** linhas contadas AQUI no navegador, antes de enviar */
+  linhas?: number
+  bytesLidos?: number
+  bytesTotais?: number
+}
+
+const BINARIOS = /\.(xlsx|xls|ods)$/i
+
+/**
+ * Conta as linhas do arquivo no próprio navegador, em streaming.
+ *
+ * Existe por um motivo de interface, não de dados: o POST para a Edge Function é
+ * uma espera cega de dezenas de segundos, e sem nada na tela o usuário não sabe
+ * se o app travou. Contar aqui dá um número real para mostrar antes de enviar.
+ *
+ * É uma contagem de quebras de linha: um CSV com quebra dentro de aspas conta a
+ * mais. Por isso o número que fica na tela no fim é o do servidor, não este.
+ */
+export async function contarLinhas(
+  arquivo: File,
+  aoContar?: (linhas: number, bytesLidos: number, bytesTotais: number) => void,
+): Promise<number | undefined> {
+  // .xlsx é zip binário: contar \n não significa nada
+  if (BINARIOS.test(arquivo.name)) return undefined
+
+  const total = arquivo.size
+  let lidos = 0
+  let linhas = 0
+  let ultimoAviso = 0
+
+  const leitor = arquivo.stream().getReader()
+  const dec = new TextDecoder()
+  try {
+    for (;;) {
+      const { done, value } = await leitor.read()
+      if (done) break
+      lidos += value.byteLength
+      const txt = dec.decode(value, { stream: true })
+      for (let i = 0; i < txt.length; i++) {
+        if (txt.charCodeAt(i) === 10) linhas++
+      }
+      // no máximo ~12 avisos por segundo, e devolve o controle ao browser:
+      // sem isso a barra congela porque o laço monopoliza a thread
+      const agora = performance.now()
+      if (agora - ultimoAviso > 80) {
+        ultimoAviso = agora
+        aoContar?.(linhas, lidos, total)
+        await new Promise((r) => setTimeout(r, 0))
+      }
+    }
+  } finally {
+    leitor.releaseLock()
+  }
+
+  aoContar?.(linhas, total, total)
+  return linhas
+}
+
+/** POST com progresso de envio. `fetch` não expõe upload progress; XHR expõe. */
+function enviarComProgresso(
+  form: FormData,
+  jwt: string,
+  aoEnviar: (bytes: number, total: number) => void,
+): Promise<{ ok: boolean; status: number; dados: Record<string, unknown> }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${FUNCTIONS_URL}/qualificador-importar`)
+    xhr.setRequestHeader('Authorization', `Bearer ${jwt}`)
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) aoEnviar(e.loaded, e.total)
+    }
+    xhr.onload = () => {
+      let dados: Record<string, unknown> = {}
+      try { dados = JSON.parse(xhr.responseText) } catch { /* corpo não-JSON */ }
+      resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, dados })
+    }
+    xhr.onerror = () => reject(new Error('conexão interrompida'))
+    xhr.ontimeout = () => reject(new Error('tempo esgotado'))
+    xhr.send(form)
+  })
+}
+
 export async function analisarArquivos(
   arquivos: File[],
   opcoes: {
     linhaCabecalho?: number
-    aoProgresso?: (feitos: number, total: number, arquivo: string) => void
+    aoProgresso?: (p: Progresso) => void
   } = {},
 ): Promise<RespostaAnalise> {
   const juntos: RespostaAnalise = { analisados: [], documentos: [], campos: [] }
+  const avisar = (p: Progresso) => opcoes.aoProgresso?.(p)
 
   for (const [i, arquivo] of arquivos.entries()) {
-    opcoes.aoProgresso?.(i, arquivos.length, arquivo.name)
+    const base = { arquivo: arquivo.name, indice: i, total: arquivos.length }
+
+    // 1. contar aqui, para a tela ter um número desde o primeiro segundo
+    avisar({ ...base, fase: 'contando', linhas: 0, bytesLidos: 0, bytesTotais: arquivo.size })
+    const linhas = await contarLinhas(arquivo, (n, lidos, totalBytes) =>
+      avisar({ ...base, fase: 'contando', linhas: n, bytesLidos: lidos, bytesTotais: totalBytes }))
 
     const form = new FormData()
     form.append('arquivos', arquivo)
@@ -93,12 +188,20 @@ export async function analisarArquivos(
     }
 
     try {
-      const r = await fetch(`${FUNCTIONS_URL}/qualificador-importar`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${await token()}` },
-        body: form,
+      const jwt = await token()
+      avisar({ ...base, fase: 'enviando', linhas, bytesLidos: 0, bytesTotais: arquivo.size })
+
+      const r = await enviarComProgresso(form, jwt, (bytes, totalBytes) => {
+        avisar({
+          ...base,
+          // 100% enviado não é 100% pronto: a função ainda vai processar
+          fase: bytes >= totalBytes ? 'processando' : 'enviando',
+          linhas, bytesLidos: bytes, bytesTotais: totalBytes,
+        })
       })
-      const dados = await r.json().catch(() => ({}))
+      const dados = r.dados as {
+        analisados?: Analise[]; documentos?: Analise[]; campos?: CampoCanonico[]; erro?: string
+      }
 
       if (!r.ok) {
         // um arquivo problemático não pode cancelar os outros da fila
@@ -119,7 +222,7 @@ export async function analisarArquivos(
     }
   }
 
-  opcoes.aoProgresso?.(arquivos.length, arquivos.length, '')
+  avisar({ arquivo: '', indice: arquivos.length, total: arquivos.length, fase: 'pronto' })
   return juntos
 }
 

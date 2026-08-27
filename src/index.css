@@ -425,3 +425,14 @@
   /* Confete some por completo — nao existe versao discreta de confete. */
   .venda-confete { display: none !important; }
 }
+
+/* Barra indeterminada do upload: enquanto a Edge Function lê o arquivo não há
+   percentual para mostrar — o movimento é o único sinal de que está vivo. */
+@keyframes upload-indeterminado {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .barra-indeterminada { animation: none; width: 100%; opacity: 0.5; }
+}
