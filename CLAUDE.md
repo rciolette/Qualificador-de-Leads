@@ -81,23 +81,33 @@ branch pendente — `main-j9m1xx` já está contido no `main`.
 | Fase 5 | Interface | **o fluxo guiado é o caminho principal**; as 6 telas viraram "Avançado" |
 | Fase 6 | Ciclo fechado | não iniciada |
 
-**Volume medido em 27/08 18h**, depois da importação das bases do Raphael e da
-reconciliação das três fontes:
-`espelho_sellflux` 35.697 · `espelho_memberclass` 11.197 · `pessoa` **4.430** ·
-`transacao` 4.947 · `saude_disparo` **4.241 (95,7% da base)** · `espelho_memberkit`
-1.439 · `crm_snapshot` 1.217 (567 com `props`) · `engajamento` **437**
-(342 MemberClass + 95 MemberKit) · `campo_filtravel` 55 (14 com fonte nativa) ·
-`lista_item` 233 · `iniciativa` 1 · `lista` 1 · `modelo_fluxo` 2.
+**Volume medido em 27/08 20h40**, depois do reespelhamento completo da
+MemberClass: `espelho_sellflux` 35.697 · `espelho_memberclass` **26.670** ·
+`pessoa` 4.430 · `transacao` 4.947 · `engajamento` **4.444** (4.339
+MemberClass + 105 MemberKit) · `saude_disparo` 4.242 · `crm_snapshot` 3.485 ·
+`espelho_memberkit` 1.442 · `campo_filtravel` 55 (14 com fonte nativa) ·
+`lista_item` 133 · `iniciativa` 1 · `lista` 1 · `modelo_fluxo` 2.
 
-**A base triplicou em 27/08 17h37** — o Raphael importou "Compras iniciAmazon
-90D" (4.489 lidas, 3.318 novas) e "teste 1.1" (1.853 lidas, 327 novas).
+**O espelho da MemberClass estava PARCIAL desde o começo, e ninguém percebeu.**
+Ele tinha 11.197 linhas — o resto da execução 35, que travou em `em_andamento`
+em 27/08 01h30. Como `qualificador-espelhar` apaga a tabela antes de
+reconstruir, o que sobrou parecia um espelho completo. O reespelhamento de
+27/08 20h17 trouxe **26.670 alunos** (todos distintos, zero repetição) em 22
+minutos.
 
-**Reconciliar não é reespelhar.** Depois daquela importação, os espelhos já
-tinham o dado das 4.430 pessoas, mas `engajamento` e `saude_disparo` ainda eram
-os da base de 1.293. `qualificador.reconciliar('<fonte>')` é **SQL puro, roda em
-segundos e não faz uma chamada HTTP** — levou `saude_disparo` de 1.237 para 4.241
-e `engajamento` de 380 para 437. **Toda importação nova pede isso**, e não pede
-espelhamento.
+O efeito no cruzamento é grande — todos os números anteriores da MemberClass
+foram medidos contra o espelho parcial:
+
+| | antes (parcial) | agora |
+|---|---|---|
+| pessoas cruzadas | 342 | **4.339** (97,9% da base) |
+| com 1+ aula | 219 | **2.709** |
+| com 3+ aulas | 194 | **2.280** |
+| com último acesso | 298 | **3.761** |
+
+A MemberClass deixou de ser fonte só de refino e virou **a mais rica do
+projeto**, à frente da Sellflux (4.242) e do HubSpot (3.485). Uma etapa
+"3+ aulas" leva 2.394 → 1.065 sobre a base atual.
 
 **Decisões do Raphael já tomadas** (registradas na seção 9 de
 `docs/tarefa-2-multiplas-plataformas-e-de-para.md`, não reabrir): desempate
@@ -163,9 +173,10 @@ acontece em SQL (`qualificador.reconciliar`). Só o HubSpot fica em
 2. ~~Encher `iniciativa` / `lista` / `lista_item`, e a tela.~~ **Fechado em 27/08
    23h10**: `/iniciativas/nova`, `/listas`, `/saude-dos-dados` e o XLSX estão no
    ar e testados de ponta a ponta. Ver `docs/telas-iniciativas.md`.
-3. **Reconciliar a MemberClass.** O espelho casa 324 pessoas, mas `engajamento`
-   só tem as 56 do MemberKit: a execução 35 travou em `em_andamento` sem chamar
-   `finalizar_execucao`. A tela de saúde mostra "sem sincronização" por isso.
+3. ~~Reconciliar a MemberClass.~~ **Fechado em 27/08 20h40** — e era pior do
+   que parecia: o espelho estava parcial (11.197 do que deveriam ser 26.670),
+   sobra da execução 35 que travou. Reespelhado e reconciliado: 4.339 pessoas,
+   97,9% da base.
 4. **Fatiar o espelhamento para caber no tempo da Edge Function.** MemberClass e
    Sellflux estouraram; precisam retomar de onde pararam, não recomeçar.
 5. **Ler `divisao_times`.** Hoje toda a lista cai em `prioridade_times[1]` — foi
