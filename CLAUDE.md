@@ -59,7 +59,7 @@ O RBAC é próprio: `qualificador.user_profiles` (papéis `leitor` / `operador` 
 `gestao`). **Não** herda de `public.profiles` nem usa `public.is_gestao()`.
 Ter conta no Gerador de Links não dá acesso aqui.
 
-## 3. Estado real (27/08/2026, 01h)
+## 3. Estado real (27/08/2026, 22h40)
 
 | Fase / tarefa | Entrega | Situação |
 |---|---|---|
@@ -67,18 +67,25 @@ Ter conta no Gerador de Links não dá acesso aqui.
 | Fase 2 | Integrações | HubSpot rodou de verdade (584 linhas em `crm_snapshot`) |
 | Tarefa 0 | Teste de conexão por integração | entregue |
 | Tarefa 0-B | Espelho de MemberKit/MemberClass/Sellflux | código no ar; **falta a primeira execução real** |
-| Tarefa 1 | Motor de iniciativas: filtros, funil, 8 eixos de score | schema e motor no banco; tabelas ainda vazias |
+| Tarefa 1 | Motor de iniciativas: filtros, funil, 8 eixos de score | **entregue**; 6 de 8 aceites passaram, 2 barrados por falta de dado |
+| Tarefa 2 | Funil de etapas encadeadas (`filtrar_em_etapas`) | **motor pronto e testado**; falta a tela |
 | Fase 3 | Métricas e saúde de dados | não iniciada |
 | Fase 5 | Interface | `/importar`, `/integracoes`, `/catalogo` funcionam |
 | Fase 6 | Ciclo fechado | não iniciada |
 
 **Tabelas e volume:** `pessoa` 1.293 · `pessoa_identificador` 5.197 ·
-`transacao` 1.302 · `crm_snapshot` 584 · `staging_assiny` 1.311 ·
-`staging_generico` 1.286 · `campo_filtravel` 42 · `recorte` 9 · `projeto` 9 ·
-`perfil_peso` 7 · `integracao` 5 · `user_profiles` 4 · `importacao` 3 ·
-`integracao_execucao` 24 · `fonte_importacao` 1 · `engajamento` 1 ·
-`saude_disparo` 1 · **vazias:** `iniciativa`, `lista`, `lista_item`,
-`disparo_registro`, `participacao`, `documento`, e os três `espelho_*`.
+`transacao` 1.302 · `crm_snapshot` 744 · `staging_assiny` 1.311 ·
+`staging_generico` 1.286 · `lista_item` 133 · `campo_filtravel` 42 ·
+`recorte` 9 · `projeto` 9 · `perfil_peso` 7 · `integracao` 5 ·
+`user_profiles` 4 · `importacao` 3 · `integracao_execucao` 24 ·
+`fonte_importacao` 1 · `engajamento` 1 · `saude_disparo` 1 ·
+`iniciativa` 1 · `lista` 1 · **vazias:** `disparo_registro`, `participacao`,
+`documento`, e os três `espelho_*`.
+
+**A primeira lista existe:** 133 pessoas, iniciativa "Corujão · recuperar
+perdido (agosto)". O funil dela: 1.293 → 99 em cadência automática → 18 com
+falha de entrega → 296 perdidos há ≤ 15 dias → 549 sem HubSpot → 193 sem
+negócio em IS/AE → 5 com E-cont → **133**.
 
 **Funções de negócio no banco:** `ingerir_assiny` · `ingerir_generico` ·
 `sugerir_fonte` · `validar_regras` · `resolver_projeto` · `pessoas_para_sync` ·
@@ -91,9 +98,10 @@ Ter conta no Gerador de Links não dá acesso aqui.
 `qualificador-sync` (HubSpot + teste de conexão das 4) · `qualificador-espelhar` ·
 `qualificador-importar` · `qualificador-importar-assiny`.
 
-**Não publicado ainda:** o `qualificador-sync` em produção é a versão **antiga**,
-que ainda carrega os três adaptadores removidos do repo. E o front no Cloudflare
-é anterior ao botão "Espelhar e cruzar". Ver seção 4, item 0.
+**Publicado em 27/08 22h:** `qualificador-sync` (agora só HubSpot + teste das 4)
+e o front no Cloudflare, já com o botão "Espelhar e cruzar". O item 0 da seção 4
+está fechado. O `qualificador-espelhar` **não** foi republicado por mim — estava
+sendo editado por outra sessão no momento.
 
 ## 3b. A regra que a Tarefa 0-B estabeleceu
 
@@ -108,18 +116,40 @@ acontece em SQL (`qualificador.reconciliar`). Só o HubSpot fica em
 
 ## 4. Trabalho em aberto (pegue daqui)
 
-0. **Publicar o que está no repo mas não em produção:**
-   `supabase functions deploy qualificador-sync` (ou pelo MCP) e `npm run deploy`.
+0. ~~Publicar o que está no repo mas não em produção.~~ **Fechado em 27/08 22h.**
 1. **Rodar as três fontes espelhadas de verdade** e conferir os aceites:
    MemberKit ~1.433 linhas em <60 s · MemberClass reportando `totalCount`
    (0 ⇒ chave de outro tenant, parar) · Sellflux cruzando majoritariamente por
    telefone.
-2. **Encher `iniciativa` / `lista` / `lista_item`** — o motor da Tarefa 1 existe e
-   nunca produziu uma lista.
+2. ~~Encher `iniciativa` / `lista` / `lista_item`.~~ **Fechado**: primeira lista
+   com 133 pessoas. Falta a **tela** — `/iniciativas/nova`, `/listas` e a
+   exportação XLSX/CSV. O motor responde; ninguém consegue usá-lo sem SQL.
 3. Decidir `ECONT CONTABILIDADE DO ECOMMERCE` (2.370 transações fora do catálogo,
    hoje bloqueia a importação) e a `area_membros` de `ECONT BH`.
 4. Decidir qual escala de classificação manda: `classificacao_leadscore` (5),
    `[LEAD] TIER *` do MemberKit (5) ou `dash.leadscore_faixas` (7).
+
+## 4b. Funil de etapas — a decisão em aberto já tem resposta
+
+O rascunho "Funil de qualificação" pergunta o que fazer quando a pessoa não existe
+na plataforma consultada numa etapa: filtro (sai) ou enriquecimento (fica)?
+
+**Resolvido por etapa, com a flag `manter_sem_dado`:**
+
+| Flag | Comportamento | Quando usar |
+|---|---|---|
+| ausente / `false` | quem não tem o dado **sai** | "só quem está no MemberKit segue" |
+| `true` | quem não tem o dado **segue**, sem ser julgado | "quem tem 3+ aulas é melhor, mas não corte quem não tem conta" |
+
+Medido: a mesma etapa "MemberClass 3+ aulas" leva 16 → 0 como filtro e 16 → 16
+como refino.
+
+**O enriquecimento não acontece por etapa, e isso é de propósito.** As fontes
+espelhadas já populam `engajamento` / `crm_snapshot` / `saude_disparo`, e
+`v_pessoa_completa` as junta com left join antes do funil começar. Consultar a
+plataforma dentro da etapa seria voltar ao laço por pessoa que a Tarefa 0-B
+removeu. O que sobra de verdade para decidir por etapa é só uma coisa: a ausência
+do dado exclui, ou não.
 
 ## 5. Armadilhas já pagas — não repetir
 
@@ -130,6 +160,18 @@ acontece em SQL (`qualificador.reconciliar`). Só o HubSpot fica em
   (Edge Function com `service_role`) e é materializada em tabelas próprias.
 - **`sql.json(dados)`, nunca `JSON.stringify`** ao gravar jsonb com o driver
   `postgres` — senão a coluna guarda uma *string* e todo `dados ->> 'x'` vira null.
+  Isso já corrompeu 659 linhas de `crm_snapshot` em silêncio: `deals`, `econt` e
+  `disparo` viraram string, todo `deals->'itens'` virou null e **todos os bloqueios
+  duros passaram a contar zero**. Reparado na migration 35 — o dado era recuperável
+  com `(coluna #>> '{}')::jsonb`. Se um funil mostrar bloqueio duro zerado,
+  desconfie do `jsonb_typeof` antes de desconfiar do motor.
+- **`CREATE OR REPLACE FUNCTION` restaura `EXECUTE` para `PUBLIC`.** É o padrão do
+  Postgres ao recriar função. Foi assim que `credencial_ler` — que devolve o token
+  do HubSpot em texto puro — voltou a ser executável por `authenticated` depois de
+  a migration 10 tê-la revogado. **Revogar depois de cada replace não é opcional.**
+- **Cast de campo vindo de API precisa ser tolerante.** APIs devolvem `""` onde não
+  há valor, e `''::date` derruba a view inteira. Use `qualificador.como_data`,
+  `como_ts`, `como_bool`.
 - **Valores da Assiny vêm em centavos**; `CriadoEm` é `America/Sao_Paulo` e é
   gravado em UTC.
 - **HubSpot: `aux_falha_sellflux` está no NEGÓCIO, não no contato.** O conector
