@@ -21,7 +21,6 @@ export function ImportarPage() {
   const [progresso, setProgresso] = useState<Progresso | null>(null)
   const [analises, setAnalises] = useState<Analise[]>([])
   const [campos, setCampos] = useState<CampoCanonico[]>([])
-  const entrada = useRef<HTMLInputElement>(null)
 
   const importacoes = useQuery({ queryKey: ['importacoes'], queryFn: () => listarImportacoes(20) })
 

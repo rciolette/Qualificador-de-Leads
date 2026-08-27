@@ -265,9 +265,27 @@ do dado exclui, ou não.
   saíam iguais e ninguém sabia qual era qual. `resolver_colunas` qualifica o
   repetido com a plataforma — e a **tela chama a mesma função**, em vez de ler
   `campo_filtravel` direto, senão o cabeçalho da prévia não bate com o do arquivo.
-- **`npm run build` é `vite build` e NÃO faz typecheck.** Para conferir tipos,
-  `./node_modules/.bin/tsc --noEmit` à mão. E `node_modules/` já apareceu vazio no
-  meio da sessão (outra sessão ou o sandbox): `npm install` antes de acusar o build.
+- **`npm run build` é `vite build` e NÃO faz typecheck. E `tsc --noEmit` sozinho
+  também não.** O `tsconfig.json` da raiz tem `"files": []` e só aponta para os
+  subprojetos — então `./node_modules/.bin/tsc --noEmit` **sai com 0 sem checar
+  arquivo nenhum**. Isso é pior que não checar: dá a impressão de que passou.
+  Foi assim que um `useRef` sem import chegou em produção e deixou **7 das 8
+  telas em branco**. O comando certo é:
+
+  ```bash
+  ./node_modules/.bin/tsc -p tsconfig.app.json --noEmit
+  ```
+
+  Na primeira vez que rodei o certo, ele achou dois erros reais que o outro
+  deixava passar. E `node_modules/` já apareceu vazio no meio da sessão (outra
+  sessão ou o sandbox): `npm install` antes de acusar o build.
+- **Estado de tela que o usuário construiu não pode viver só em `useState`.**
+  O `/fluxo` guardava nome, etapas, colunas e pesos em estado local: sair para
+  "Listas geradas" e voltar apagava o trabalho inteiro, sem erro nenhum. Agora vai
+  para `sessionStorage` a cada mudança (`qualificador:fluxo:rascunho`) — da aba,
+  não do navegador: fechar a janela descarta, que é o esperado para um rascunho.
+  E cuidado com a ordem: o `useEffect` que grava precisa vir **depois** de todos
+  os `useState` que lê, senão é TDZ e a tela fica em branco.
 - **Revogar de `authenticated` só vale para função `SECURITY DEFINER`.** Numa
   função `INVOKER` a revogação quebra quem chama: a migration 41 tirou
   `campo_bate` de `authenticated` por zelo, e como `filtrar_em_etapas` é INVOKER,

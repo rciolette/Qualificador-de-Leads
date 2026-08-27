@@ -45,6 +45,44 @@ const PASSOS = [
 ] as const
 
 /**
+ * O rascunho do fluxo sobrevive à navegação.
+ *
+ * O estado morava só em `useState`, e sair para "Listas geradas" e voltar
+ * apagava nome, etapas, colunas e pesos — o trabalho inteiro. `sessionStorage`
+ * porque o rascunho é da aba: fechar a janela descarta, o que é o esperado para
+ * algo que ainda não virou lista.
+ */
+const CHAVE_RASCUNHO = 'qualificador:fluxo:rascunho'
+
+interface Rascunho {
+  passo: 1 | 2 | 3
+  nome: string
+  tipo: TipoIniciativa
+  times: TimeComercial[]
+  antiFadiga: number
+  perdidoDias: number
+  etapas: Etapa[]
+  pesos: Record<string, number>
+  listaId: string | null
+}
+
+function lerRascunho(): Partial<Rascunho> {
+  // pode lançar em aba anônima ou com armazenamento bloqueado: sem rascunho é
+  // um começo válido, não um erro
+  try {
+    return JSON.parse(sessionStorage.getItem(CHAVE_RASCUNHO) ?? '{}') as Partial<Rascunho>
+  } catch {
+    return {}
+  }
+}
+
+function gravarRascunho(r: Rascunho) {
+  try {
+    sessionStorage.setItem(CHAVE_RASCUNHO, JSON.stringify(r))
+  } catch { /* quota ou armazenamento bloqueado: não vale derrubar a tela */ }
+}
+
+/**
  * O caminho principal do app: uma jornada linear, do arquivo à planilha.
  *
  * As telas de Importar / Iniciativas / Listas continuam existindo em "Avançado" —
@@ -54,7 +92,8 @@ const PASSOS = [
  */
 export function FluxoPage() {
   const qc = useQueryClient()
-  const [passo, setPasso] = useState<1 | 2 | 3>(1)
+  const [inicial] = useState(lerRascunho)
+  const [passo, setPasso] = useState<1 | 2 | 3>(inicial.passo ?? 1)
 
   // ---------------------------------------------------------------- passo 1
   const [progresso, setProgresso] = useState<Progresso | null>(null)
@@ -87,13 +126,13 @@ export function FluxoPage() {
   })
 
   // ---------------------------------------------------------------- passo 2
-  const [nome, setNome] = useState('')
-  const [tipo, setTipo] = useState<TipoIniciativa>('corujao')
-  const [times, setTimes] = useState<TimeComercial[]>(['IS'])
-  const [antiFadiga, setAntiFadiga] = useState(7)
-  const [perdidoDias, setPerdidoDias] = useState(15)
-  const [etapas, setEtapas] = useState<Etapa[]>([])
-  const [pesos, setPesos] = useState<Record<string, number>>({})
+  const [nome, setNome] = useState(inicial.nome ?? '')
+  const [tipo, setTipo] = useState<TipoIniciativa>(inicial.tipo ?? 'corujao')
+  const [times, setTimes] = useState<TimeComercial[]>(inicial.times ?? ['IS'])
+  const [antiFadiga, setAntiFadiga] = useState(inicial.antiFadiga ?? 7)
+  const [perdidoDias, setPerdidoDias] = useState(inicial.perdidoDias ?? 15)
+  const [etapas, setEtapas] = useState<Etapa[]>(inicial.etapas ?? [])
+  const [pesos, setPesos] = useState<Record<string, number>>(inicial.pesos ?? {})
   const [funil, setFunil] = useState<LinhaFunil[]>([])
 
   const perfis = useQuery({ queryKey: ['perfis'], queryFn: listarPerfis })
@@ -116,7 +155,13 @@ export function FluxoPage() {
   const semPeso = Object.values(pesos).every((v) => !v)
 
   // ---------------------------------------------------------------- passo 3
-  const [listaId, setListaId] = useState<string | null>(null)
+  const [listaId, setListaId] = useState<string | null>(inicial.listaId ?? null)
+
+  // guarda o rascunho a cada mudança: sair da aba e voltar não pode custar o funil
+  useEffect(() => {
+    gravarRascunho({ passo, nome, tipo, times, antiFadiga, perdidoDias, etapas, pesos, listaId })
+  })
+
 
   const previa = useQuery({
     queryKey: ['previa', etapas, config],

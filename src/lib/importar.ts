@@ -200,7 +200,11 @@ export async function analisarArquivos(
         })
       })
       const dados = r.dados as {
-        analisados?: Analise[]; documentos?: Analise[]; campos?: CampoCanonico[]; erro?: string
+        analisados?: Analise[]
+        // documento (.md/.txt) não é planilha: vira contexto, não dado
+        documentos?: { id: string; arquivo: string }[]
+        campos?: CampoCanonico[]
+        erro?: string
       }
 
       if (!r.ok) {
