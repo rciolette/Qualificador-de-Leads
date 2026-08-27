@@ -1,7 +1,30 @@
 # CLAUDE.md — Qualificador de Leads ROI
 
-Instruções para qualquer sessão de Claude Code neste repositório.
+Instruções para qualquer sessão de agente neste repositório.
+**Este arquivo é o ponto de sincronia entre sessões.** Quem terminar uma tarefa
+atualiza a seção 3 aqui antes de sair.
 Última atualização: 27/08/2026.
+
+## 0. Protocolo entre sessões (leia primeiro)
+
+Mais de uma sessão de agente já trabalhou neste repo ao mesmo tempo, no **mesmo
+working tree**, e isso já produziu dois estragos reais: um commit com mensagem
+trocada (`Tarefa 1 · motor de iniciativas` contém arquivos da Tarefa 0-B) e uma
+numeração de migration fora de ordem. Regras para não repetir:
+
+1. **Um único projeto Supabase: `qevnfgopjupsmwvflcza`.** Pelo MCP, é o servidor
+   **`supabase-link-generator`** — confira com `get_project_url` antes de aplicar
+   qualquer coisa. Os outros servidores Supabase da conta (`supabase-roi-mcp`,
+   `Supabase-rot-rc_concarga`, `Supabase`) **não** pertencem a este projeto.
+2. **`git commit` só do que você mexeu.** Nunca `git add -A` / `git commit -a`:
+   pode haver arquivos de outra sessão no meio do caminho.
+3. **Migration nova sempre com o timestamp do dia e o próximo número livre.**
+   Confira com `list_migrations` antes de escolher o número — a numeração já
+   pulou 22 e 23 e recebeu 14 e 15 depois do 21.
+4. **Antes de começar, leia a seção 3.** Depois de entregar, atualize a seção 3 e
+   escreva um `docs/<tarefa>.md` com aceite, divergências e decisões.
+5. `git status` pode falhar com `index.lock` — é outra sessão commitando ou o
+   sandbox que não apaga arquivos. Renomeie o lock para `_to_delete/`, não force.
 
 ## 1. O que este app é
 
@@ -23,7 +46,8 @@ Duas regras de produto que não se negociam:
 | Front | Vite + React 18 + TS + Tailwind + shadcn/ui + React Query |
 | Deploy | Cloudflare (`wrangler`), `npm run deploy` |
 | Banco | Supabase `qevnfgopjupsmwvflcza`, schema **`qualificador`** |
-| MCP do banco | use o servidor **`supabase-link-generator`** (é o mesmo projeto) |
+| MCP do banco | **`supabase-link-generator`** (é o mesmo projeto) |
+| CLI | `npx supabase` existe na máquina, **sem token** — `supabase login` nunca foi feito, então deploy de função hoje só pelo MCP |
 
 **Convivência crítica:** o mesmo projeto Supabase hospeda o **Gerador de Links**
 (`public`) e o **Dashboard financeiro** (`dash`), **ambos em produção**.
@@ -35,57 +59,65 @@ O RBAC é próprio: `qualificador.user_profiles` (papéis `leitor` / `operador` 
 `gestao`). **Não** herda de `public.profiles` nem usa `public.is_gestao()`.
 Ter conta no Gerador de Links não dá acesso aqui.
 
-## 3. Estado real (27/08/2026)
+## 3. Estado real (27/08/2026, 01h)
 
-| Fase | Entrega | Situação |
+| Fase / tarefa | Entrega | Situação |
 |---|---|---|
-| 1 | Catálogo e ingestão Assiny | concluída e validada |
-| 2 | Camada de integrações | código no ar; **nenhum conector exercido contra API real — falta credencial** |
-| 2b | Importador genérico (arrastar-e-soltar, de-para manual) | **em curso, não commitado** |
-| 3 | Métricas e saúde de dados | não iniciada |
-| 4 | Motor de iniciativas e saída | não iniciada |
-| 5 | Interface | esqueleto navegável; páginas 3–6 vazias |
-| 6 | Ciclo fechado | não iniciada |
+| Fase 1 | Catálogo e ingestão Assiny | concluída e validada |
+| Fase 2 | Integrações | HubSpot rodou de verdade (584 linhas em `crm_snapshot`) |
+| Tarefa 0 | Teste de conexão por integração | entregue |
+| Tarefa 0-B | Espelho de MemberKit/MemberClass/Sellflux | código no ar; **falta a primeira execução real** |
+| Tarefa 1 | Motor de iniciativas: filtros, funil, 8 eixos de score | schema e motor no banco; tabelas ainda vazias |
+| Fase 3 | Métricas e saúde de dados | não iniciada |
+| Fase 5 | Interface | `/importar`, `/integracoes`, `/catalogo` funcionam |
+| Fase 6 | Ciclo fechado | não iniciada |
 
-Tabelas do schema e volume atual: `pessoa` 1.293 · `pessoa_identificador` 5.167 ·
-`transacao` 1.302 · `staging_assiny` 1.311 · `staging_generico` 1.286 ·
-`projeto` 9 · `integracao` 5 · `integracao_execucao` 11 · `user_profiles` 4 ·
-`importacao` 3 · `fonte_importacao` 1 · **`engajamento`, `crm_snapshot`,
-`saude_disparo` e `documento` ainda com 0 linhas** — é exatamente o que falta
-das integrações rodarem de verdade.
+**Tabelas e volume:** `pessoa` 1.293 · `pessoa_identificador` 5.197 ·
+`transacao` 1.302 · `crm_snapshot` 584 · `staging_assiny` 1.311 ·
+`staging_generico` 1.286 · `campo_filtravel` 42 · `recorte` 9 · `projeto` 9 ·
+`perfil_peso` 7 · `integracao` 5 · `user_profiles` 4 · `importacao` 3 ·
+`integracao_execucao` 24 · `fonte_importacao` 1 · `engajamento` 1 ·
+`saude_disparo` 1 · **vazias:** `iniciativa`, `lista`, `lista_item`,
+`disparo_registro`, `participacao`, `documento`, e os três `espelho_*`.
 
-Front: `/importar`, `/integracoes` e `/catalogo` funcionam.
-`/saude`, `/iniciativas`, `/listas` são casca.
+**Funções de negócio no banco:** `ingerir_assiny` · `ingerir_generico` ·
+`sugerir_fonte` · `validar_regras` · `resolver_projeto` · `pessoas_para_sync` ·
+`credencial_salvar` / `credencial_ler` · `registrar_execucao` /
+`finalizar_execucao` · `casar_espelho` · `reconciliar` (+ `_memberkit`,
+`_memberclass`, `_sellflux`) · `avaliar` · `aplicar_pesos` · `faixa_de` ·
+`chave_email` / `chave_documento` / `chave_telefone`.
 
-Edge Functions no ar: `qualificador-credencial-salvar`, `qualificador-sync`,
-`qualificador-espelhar`, `qualificador-importar` (genérico), `qualificador-importar-assiny`.
+**Edge Functions no ar:** `qualificador-credencial-salvar` ·
+`qualificador-sync` (HubSpot + teste de conexão das 4) · `qualificador-espelhar` ·
+`qualificador-importar` · `qualificador-importar-assiny`.
 
-## 3b. Tarefa 0-B — as três fontes pequenas (27/08)
+**Não publicado ainda:** o `qualificador-sync` em produção é a versão **antiga**,
+que ainda carrega os três adaptadores removidos do repo. E o front no Cloudflare
+é anterior ao botão "Espelhar e cruzar". Ver seção 4, item 0.
 
-MemberKit, MemberClass e Sellflux **não sincronizam mais pessoa a pessoa**. As três
-são pequenas (a maior tem 1.433 registros); perguntar uma por vez custava 1.293
-chamadas HTTP por execução para não cruzar nada. Agora a fonte inteira é espelhada
-em `qualificador.espelho_<fonte>` pela função `qualificador-espelhar` e o cruzamento
-acontece em SQL (`qualificador.reconciliar`). Detalhes em `docs/tarefa-0b.md`.
+## 3b. A regra que a Tarefa 0-B estabeleceu
 
-Regra que vale daqui em diante: **fonte pequena se espelha, fonte grande se consulta.**
-Só o HubSpot fica em `qualificador-sync`.
+**Fonte pequena se espelha, fonte grande se consulta.**
+
+MemberKit, MemberClass e Sellflux não sincronizam mais pessoa a pessoa — as três
+são pequenas (a maior tem 1.433 registros) e perguntar uma por vez custava 1.293
+chamadas HTTP por execução para não cruzar nada. A fonte inteira vai para
+`qualificador.espelho_<fonte>` pela função `qualificador-espelhar` e o cruzamento
+acontece em SQL (`qualificador.reconciliar`). Só o HubSpot fica em
+`qualificador-sync`. Detalhes em `docs/tarefa-0b.md`.
 
 ## 4. Trabalho em aberto (pegue daqui)
 
-0. **Publicar o que já está no repo mas não em produção:**
-   `supabase functions deploy qualificador-sync` (tira os 3 adaptadores antigos) e
-   `npm run deploy` (front com o botão "Espelhar e cruzar").
-1. **Gravar as 4 credenciais** (hubspot, memberclass, memberkit, sellflux) e
-   rodar os aceites da fase 2 — só o Raphael pode gravar; é o bloqueio nº 1.
-2. **Fechar o importador genérico** (4 arquivos alterados sem commit:
-   `src/lib/importar.ts`, `src/pages/ImportarPage.tsx`,
-   `supabase/functions/qualificador-importar/{index,planilha}.ts`).
-   O que mudou: um arquivo por requisição em série + streaming por lotes de 200
-   linhas, para não estourar `WORKER_LIMIT` (HTTP 546) com relatórios da Assiny
-   de ~6.700 × 63.
-3. Decidir o projeto `ECONT CONTABILIDADE DO ECOMMERCE` (2.370 transações fora
-   do catálogo, hoje bloqueia a importação) e a `area_membros` de `ECONT BH`.
+0. **Publicar o que está no repo mas não em produção:**
+   `supabase functions deploy qualificador-sync` (ou pelo MCP) e `npm run deploy`.
+1. **Rodar as três fontes espelhadas de verdade** e conferir os aceites:
+   MemberKit ~1.433 linhas em <60 s · MemberClass reportando `totalCount`
+   (0 ⇒ chave de outro tenant, parar) · Sellflux cruzando majoritariamente por
+   telefone.
+2. **Encher `iniciativa` / `lista` / `lista_item`** — o motor da Tarefa 1 existe e
+   nunca produziu uma lista.
+3. Decidir `ECONT CONTABILIDADE DO ECOMMERCE` (2.370 transações fora do catálogo,
+   hoje bloqueia a importação) e a `area_membros` de `ECONT BH`.
 4. Decidir qual escala de classificação manda: `classificacao_leadscore` (5),
    `[LEAD] TIER *` do MemberKit (5) ou `dash.leadscore_faixas` (7).
 
@@ -93,39 +125,25 @@ Só o HubSpot fica em `qualificador-sync`.
 
 - **`transaction_id` não é único.** Uma transação tem N itens (ENTRY + bumps +
   upsell/downsell). Ficar com um item por transação perde ~38% do valor.
-  A ingestão agrega por `transaction_id`.
 - **Views `v_ext_*` usam `security_invoker`** e devolvem **0 linhas** para quem
-  não tem perfil em `public.profiles`. Portanto **o app não lê `public` no
-  caminho do usuário**: a leitura acontece no sync (Edge Function com
-  `service_role`) e é materializada em tabelas do próprio Qualificador.
+  não tem perfil em `public.profiles`. A leitura de `public` acontece no sync
+  (Edge Function com `service_role`) e é materializada em tabelas próprias.
 - **`sql.json(dados)`, nunca `JSON.stringify`** ao gravar jsonb com o driver
-  `postgres` — senão a coluna guarda uma *string* e todo `dados ->> 'coluna'`
-  vira null.
+  `postgres` — senão a coluna guarda uma *string* e todo `dados ->> 'x'` vira null.
 - **Valores da Assiny vêm em centavos**; `CriadoEm` é `America/Sao_Paulo` e é
   gravado em UTC.
 - **HubSpot: `aux_falha_sellflux` está no NEGÓCIO, não no contato.** O conector
-  faz três chamadas por lote (contatos → associações → negócios); o terceiro
-  passo não é opcional.
-- **HubSpot: etapas do funil por ID, nunca por label** (os labels variam entre
-  pipelines: "Novos"/"Novo", "Em conexão"/"Em Conexão"). IDs em
+  faz três chamadas por lote; o terceiro passo não é opcional.
+- **HubSpot: etapas do funil por ID, nunca por label.** IDs em
   `integracao.config.stages_bloqueio_duro`.
-- **Bloqueio duro de disparo:** contatos nas etapas *Novos* e *Em conexão*
-  já recebem cadência automática — nunca entram em lista.
+- **Bloqueio duro de disparo:** contatos nas etapas *Novos* e *Em conexão* já
+  recebem cadência automática — nunca entram em lista.
 - **HubSpot MCP `query_crm_data` trunca em 500 linhas em silêncio.** Para volume,
-  usar a REST (lotes de ≤300 e-mails) e conferir declarado × recebido.
-- **MemberKit:** auth por query param `api_key` (não header), 120 req/min.
-  Como a chave viaja na URL, **nenhuma mensagem de erro do adaptador MemberKit
-  pode incluir a URL**. `find_members` traz no máximo 50 — consultar por e-mail,
-  nunca enumerar.
-- **MemberClass:** header `x-api-key`, `limit` máx 100, paginar até
-  `hasNextPage=false`. Sem telefone; CPF só em `/student/report`.
-- **Sellflux:** rotas de CRM exigem `acting_user_id`, obtido antes em
-  `GET /api/v1/crm/team/users`.
+  REST com lotes de ≤300 e-mails, conferindo declarado × recebido.
 - **Chave de telefone = últimos 11 dígitos, sem DDI.** A Sellflux devolve
-  `"phone": 51999999999` e nós guardamos `+5551999999999`: comparação exata nunca
-  casa. A regra existe em DOIS lugares — `qualificador.chave_telefone()` no banco e
-  `chaveTelefone()` em `fontes.ts`. Mudar uma sem a outra faz o cruzamento parar de
-  casar **em silêncio**.
+  `"phone": 51999999999` e nós guardamos `+5551999999999`. A regra existe em DOIS
+  lugares — `qualificador.chave_telefone()` no banco e `chaveTelefone()` em
+  `fontes.ts`. Mudar uma sem a outra faz o cruzamento parar de casar **em silêncio**.
 - **Sellflux: `email` vem `null` na maioria dos leads.** Nunca filtrar lead por
   e-mail exato — foi o bug que fazia a integração "não conferir nada".
 - **MemberClass: usar `/api/v1/student/report`**, o relatório do tenant inteiro.
@@ -133,7 +151,7 @@ Só o HubSpot fica em `qualificador-sync`.
   virava linha de erro.
 - **MemberKit: 404 é resposta legítima.** A base Assiny é IniciAmazon e a academia
   conectada é Consultorias/Mentorias — a sobreposição é pequena por natureza do
-  negócio, não por falha.
+  negócio, não por falha. Auth por query param `api_key`: **nunca logar a URL**.
 - **`Qualificador de Leads/`** na raiz é um clone vazio de 26/08, já no
   `.gitignore`. O trabalho vive na raiz. Não editar lá dentro.
 - **O sandbox não apaga arquivos:** renomeie para `_to_delete/` em vez de `rm`.
@@ -148,7 +166,8 @@ Para trazê-los:
 supabase link --project-ref qevnfgopjupsmwvflcza && supabase db pull --schema qualificador
 ```
 
-Nomear sempre `qualificador_AAAAMMDD_NN_descricao`.
+Nomear sempre `qualificador_AAAAMMDD_NN_descricao`, com `NN` conferido em
+`list_migrations` — ver seção 0, regra 3.
 
 ## 7. Convenções
 
@@ -157,14 +176,14 @@ Nomear sempre `qualificador_AAAAMMDD_NN_descricao`.
 - Comentário explica **por que**, não o que — o padrão do repo é comentar a
   armadilha que gerou a linha.
 - RLS em **todas** as tabelas novas, sem exceção.
-- Antes de fechar uma fase: rodar `get_advisors` e conferir que **nenhum** alerta
+- Antes de fechar uma tarefa: `get_advisors` e conferir que **nenhum** alerta
   cita `qualificador`.
-- Cada fase entregue vira um `docs/fase-N.md` com critérios de aceite,
-  divergências do PRD e decisões.
+- Cada entrega vira um `docs/<nome>.md` com aceite, divergências e decisões.
 
 ## 8. Documentação
 
 - `docs/fase-1.md` — catálogo e ingestão
 - `docs/fase-2.md` — integrações
-- Projeto Claude "Qualificador de Leads" → `claude/mapa-apis-v1.md`
-  (levantamento das 4 APIs) e `claude/estado-do-projeto.md`
+- `docs/tarefa-0b.md` — por que as três fontes pequenas não cruzavam nada
+- Projeto Claude "Qualificador de Leads" → `claude/mapa-apis-v1.md` (as 4 APIs) e
+  `claude/estado-do-projeto.md` (espelho desta seção 3, para quem não abre o repo)
