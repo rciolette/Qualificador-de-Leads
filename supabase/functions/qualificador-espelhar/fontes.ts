@@ -39,6 +39,47 @@ export interface FonteEspelho {
 
 export const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+/**
+ * fetch com recuo em 429 e 5xx, respeitando Retry-After.
+ *
+ * A MemberClass devolveu 429 na página 50 de ~252 com pausa fixa de 200 ms: o
+ * limite existe e não está documentado. Pausa fixa não resolve — o que resolve é
+ * obedecer ao Retry-After e dobrar a espera a cada tentativa.
+ *
+ * `rotulo` nunca inclui a URL: a chave do MemberKit viaja na query string.
+ */
+export async function buscarComRecuo(
+  url: string,
+  init: RequestInit,
+  rotulo: string,
+  tentativas = 5,
+): Promise<Response> {
+  let ultimo = ''
+  for (let i = 0; i < tentativas; i++) {
+    let r: Response
+    try {
+      r = await fetch(url, init)
+    } catch {
+      // a mensagem nativa do fetch carrega a URL, e a URL pode carregar a chave
+      ultimo = `${rotulo}: falha de rede`
+      await dormir(Math.min(1000 * 2 ** i, 20_000))
+      continue
+    }
+    if (r.ok) return r
+    if (r.status === 429 || r.status >= 500) {
+      const cabecalho = Number(r.headers.get('Retry-After'))
+      const espera = Number.isFinite(cabecalho) && cabecalho > 0
+        ? cabecalho * 1000
+        : 1000 * 2 ** i
+      ultimo = `${rotulo}: HTTP ${r.status}`
+      await dormir(Math.min(espera, 20_000))
+      continue
+    }
+    throw new Error(`${rotulo}: HTTP ${r.status}`)
+  }
+  throw new Error(`${ultimo} — esgotou ${tentativas} tentativas`)
+}
+
 // ------------------------------------------------------------------ normalização
 // Idêntica às funções qualificador.chave_* do banco. Se uma das duas mudar, o
 // casamento silenciosamente para de casar -- mudar sempre as duas juntas.
@@ -66,10 +107,45 @@ export function chaveTelefone(v: unknown): string | null {
   return d.length >= 10 ? d.slice(-11) : null
 }
 
+/**
+ * Acha o array de registros dentro do envelope da resposta.
+ *
+ * A MemberClass chegou à página 50 gravando ZERO linhas: `pagination.hasNextPage`
+ * dizia `true` (então o laço seguia) mas o array de alunos não estava em nenhuma
+ * das chaves que a lista conhecia. Uma lista fixa de chaves não sobrevive a uma
+ * API que ninguém documentou: se nenhuma bater, vale o primeiro array de objetos
+ * que existir no corpo.
+ */
 // deno-lint-ignore no-explicit-any
 function corpoLista(corpo: any): any[] {
   if (Array.isArray(corpo)) return corpo
-  return corpo?.data ?? corpo?.items ?? corpo?.users ?? corpo?.leads ?? corpo?.students ?? []
+  for (const chave of ['data', 'items', 'users', 'leads', 'students', 'alunos',
+                       'results', 'records', 'report', 'rows', 'content']) {
+    if (Array.isArray(corpo?.[chave])) return corpo[chave]
+  }
+  if (corpo && typeof corpo === 'object') {
+    for (const valor of Object.values(corpo)) {
+      if (Array.isArray(valor) && (valor.length === 0 || typeof valor[0] === 'object')) {
+        return valor as any[]
+      }
+    }
+  }
+  return []
+}
+
+/**
+ * Página 1 que responde 200 e não produz um registro sequer é envelope
+ * desconhecido, não base vazia. Falhar aqui, dizendo QUAIS chaves vieram, custa
+ * uma execução; seguir em silêncio custou 50 páginas e um espelho vazio.
+ */
+// deno-lint-ignore no-explicit-any
+function exigirRegistros(n: number, registros: Registro[], corpo: any, rotulo: string) {
+  if (n > 1 || registros.length > 0) return
+  const chaves = corpo && typeof corpo === 'object' ? Object.keys(corpo).join(', ') : typeof corpo
+  throw new Error(
+    `${rotulo}: a fonte respondeu 200 mas nenhum registro foi reconhecido na página 1. ` +
+    `Chaves do corpo: ${chaves}`,
+  )
 }
 
 // ------------------------------------------------------------------ MemberKit
@@ -86,14 +162,8 @@ export const memberkit: FonteEspelho = {
     const url = `${ctx.baseUrl}/users?page=${n}&page_limit=50` +
       `&api_key=${encodeURIComponent(ctx.credencial)}`
 
-    let r: Response
-    try {
-      r = await fetch(url, { headers: { Accept: 'application/json' } })
-    } catch {
-      // a mensagem nativa do fetch carrega a URL, e a URL carrega a chave
-      throw new Error('memberkit: falha de rede ao listar membros')
-    }
-    if (!r.ok) throw new Error(`memberkit: HTTP ${r.status} ao listar membros`)
+    const r = await buscarComRecuo(
+      url, { headers: { Accept: 'application/json' } }, 'memberkit users')
 
     const corpo = await r.json()
     const lista = corpoLista(corpo)
@@ -110,6 +180,8 @@ export const memberkit: FonteEspelho = {
         chave_telefone: chaveTelefone(`${m.phone_local_code ?? ''}${m.phone_number ?? ''}`),
         payload: m,
       }))
+
+    exigirRegistros(n, registros, corpo, 'memberkit users')
 
     const proxima = totalPaginas
       ? (n < totalPaginas ? n + 1 : null)
@@ -128,14 +200,16 @@ export const memberkit: FonteEspelho = {
 export const memberclass: FonteEspelho = {
   slug: 'memberclass',
   tabela: 'espelho_memberclass',
-  pausaMs: 200,
+  // 200 ms levou a 429 na página 50. O tenant tem ~25 mil alunos (~252 páginas):
+  // é a fonte mais longa das três, e a que mais precisa ir devagar.
+  pausaMs: 700,
 
   async pagina(n, ctx) {
-    const r = await fetch(
+    const r = await buscarComRecuo(
       `${ctx.baseUrl}/api/v1/student/report?page=${n}&limit=100`,
       { headers: { 'x-api-key': ctx.credencial, Accept: 'application/json' } },
+      'memberclass student/report',
     )
-    if (!r.ok) throw new Error(`memberclass student/report: HTTP ${r.status}`)
 
     const corpo = await r.json()
     const lista = corpoLista(corpo)
@@ -151,6 +225,8 @@ export const memberclass: FonteEspelho = {
         chave_telefone: null, // a MemberClass não expõe telefone em lugar nenhum
         payload: a,
       }))
+
+    exigirRegistros(n, registros, corpo, 'memberclass student/report')
 
     const proxima = pag.hasNextPage === true
       ? n + 1
@@ -178,11 +254,11 @@ export const sellflux: FonteEspelho = {
   pausaMs: 150, // rate limit não documentado: ir devagar por escolha
 
   async pagina(n, ctx) {
-    const r = await fetch(
+    const r = await buscarComRecuo(
       `${ctx.baseUrl}/api/v1/lead/project?page=${n}`,
       { headers: { Authorization: `Bearer ${ctx.credencial}`, Accept: 'application/json' } },
+      'sellflux lead/project',
     )
-    if (!r.ok) throw new Error(`sellflux lead/project: HTTP ${r.status}`)
 
     const corpo = await r.json()
     const lista = corpoLista(corpo)
@@ -198,6 +274,8 @@ export const sellflux: FonteEspelho = {
         chave_telefone: chaveTelefone(l.phone),
         payload: l,
       }))
+
+    exigirRegistros(n, registros, corpo, 'sellflux lead/project')
 
     const proxima = totalPaginas
       ? (n < totalPaginas ? n + 1 : null)

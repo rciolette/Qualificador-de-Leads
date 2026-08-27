@@ -95,3 +95,58 @@ npm run deploy                                                                  
 
 Até lá, produção segue com o `qualificador-sync` antigo — inofensivo, porque o
 front novo não chama mais aquele caminho para as três fontes.
+
+---
+
+## O que a primeira execução real ensinou (27/08, madrugada)
+
+Quatro defeitos que só apareceram contra as APIs de verdade. Todos corrigidos;
+`qualificador-espelhar` está na v4.
+
+### 1. `reconciliar` barrava quem tinha autorização
+`Reconciliar exige papel operador ou gestao`, no fim de um espelhamento de 38 s
+que já tinha baixado a academia inteira. A função checava `has_min_papel()`, que
+lê `auth.uid()` — e a Edge Function fala com o banco pela `SUPABASE_DB_URL`,
+conexão Postgres direta, sem JWT. Ali `auth.uid()` é nulo.
+Migration `..._31_reconciliar_sem_jwt`: a checagem só vale quando existe JWT no
+contexto. Sem JWT, quem chamou foi código de servidor que já autenticou na entrada.
+
+### 2. Tempestade de workers derrubou o HubSpot
+`qualificador-sync` morreu com **HTTP 546 (WORKER_LIMIT)** sem nem conseguir
+escrever a linha de erro. O log do projeto mostrava dezenas de `booted`/`shutdown`
+por segundo. Causa: a função se re-invocava **e** devolvia `continua` ao front,
+que também retomava — dois ramos por vez, cada um se duplicando. O pool de
+workers saturou e levou junto uma função que não tinha nada a ver com aquilo.
+A auto-invocação foi removida: quem retoma é o front, num caminho só.
+
+### 3. MemberClass: 429 na página 50
+Rate limit não documentado. Pausa fixa de 200 ms não segura.
+Agora existe `buscarComRecuo()` — recuo exponencial obedecendo `Retry-After`,
+5 tentativas — e a pausa da MemberClass subiu para 700 ms. O erro passou a dizer
+em que página parou; as anteriores ficam no espelho e a retomada parte dali.
+
+### 4. MemberClass: 50 páginas, zero linhas
+`pagination.hasNextPage` dizia `true`, então o laço seguia — mas o array de alunos
+não estava em nenhuma das chaves que o parser conhecia, e cada página produzia
+zero registros em silêncio. Duas travas:
+- `corpoLista()` procura as chaves conhecidas e, se nenhuma bater, aceita o
+  primeiro array de objetos do corpo;
+- página 1 que responde 200 e não reconhece **nenhum** registro agora falha
+  dizendo **quais chaves vieram** — uma execução perdida em vez de um espelho vazio.
+- página vazia encerra o espelhamento, mesmo que a fonte insista que há mais.
+
+## Números reais
+
+| fonte | espelho | cruzou | como |
+|---|---|---|---|
+| MemberKit | **1.439** em 38 s (~29 chamadas) | **56** pessoas | 100% por e-mail |
+| Sellflux | 12.510 e subindo (execução interrompida) | **783** pessoas | 767 e-mail · 16 telefone |
+| MemberClass | pendente | — | — |
+
+`engajamento` saiu de 1 para 56 linhas; `saude_disparo`, de 1 para 783.
+
+**Divergência do critério de aceite 4:** eu previa que a Sellflux casaria
+*majoritariamente por telefone*. Casou majoritariamente por e-mail — 1.892 dos
+2.220 primeiros leads tinham e-mail preenchido, ao contrário do que a documentação
+sugere. Os 16 que casaram por telefone são o ganho líquido: antes não cruzavam de
+jeito nenhum. O critério estava errado, não o código.

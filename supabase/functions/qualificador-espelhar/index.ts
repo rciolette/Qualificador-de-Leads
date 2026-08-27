@@ -75,6 +75,7 @@ Deno.serve(async (req) => {
   const sql = postgres(Deno.env.get('SUPABASE_DB_URL')!, { prepare: false, max: 1 })
   const inicio = Date.now()
   let execucaoId: number | null = corpo.execucao_id ?? null
+  let paginaAtual = Math.max(corpo.pagina_inicial ?? 1, 1)
 
   try {
     const [perfil] = await sql`
@@ -112,6 +113,8 @@ Deno.serve(async (req) => {
       await sql`delete from qualificador.${sql(fonte.tabela)}`  // espelho é foto, não histórico
     }
 
+    // fora do try do laço: se a página N estourar, o erro precisa dizer QUAL foi,
+    // porque o espelho já tem as N-1 anteriores e a retomada parte daí
     let pagina = Math.max(corpo.pagina_inicial ?? 1, 1)
     let gravados = 0
     let chamadas = 0
@@ -119,6 +122,7 @@ Deno.serve(async (req) => {
     let paginasNestaInvocacao = 0
 
     for (;;) {
+      paginaAtual = pagina
       const p = await fonte.pagina(pagina, ctx)
       chamadas += p.chamadas
       paginasNestaInvocacao++
@@ -139,7 +143,12 @@ Deno.serve(async (req) => {
         gravados += p.registros.length
       }
 
-      if (p.proxima === null) {
+      // Página vazia com a fonte dizendo que há mais: foi assim que a MemberClass
+      // percorreu 50 páginas sem gravar nada. Página sem registro é o fim, mesmo
+      // que hasNextPage insista no contrário.
+      const acabou = p.proxima === null || p.registros.length === 0
+
+      if (acabou) {
         // ------------------------------------------------------ fim: reconcilia
         const [{ n: linhasEspelho }] = await sql`
           select count(*)::int as n from qualificador.${sql(fonte.tabela)}`
@@ -166,21 +175,18 @@ Deno.serve(async (req) => {
         })
       }
 
-      pagina = p.proxima
+      pagina = p.proxima!
 
       // ------------------------------------------------------ orçamento do worker
+      //
+      // A função NÃO se re-invoca. A primeira versão fazia isso E devolvia
+      // `continua` ao front, que também retomava: dois ramos por vez, cada um se
+      // duplicando. O log do projeto virou dezenas de `booted`/`shutdown` por
+      // segundo, o pool de workers saturou e o `qualificador-sync` do HubSpot,
+      // que não tinha nada a ver com isso, morreu com HTTP 546 (WORKER_LIMIT).
+      //
+      // Quem retoma é o front, num caminho só, mostrando a página na tela.
       if (Date.now() - inicio > ORCAMENTO_MS || paginasNestaInvocacao >= MAX_PAGINAS_POR_INVOCACAO) {
-        const continuacao = fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/qualificador-espelhar`, {
-          method: 'POST',
-          headers: { Authorization: autorizacao, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fonte: slug, pagina_inicial: pagina, execucao_id: execucaoId,
-            reconciliar: corpo.reconciliar,
-          }),
-        })
-        // @ts-ignore EdgeRuntime existe no runtime do Supabase, não nos tipos do Deno
-        if (typeof EdgeRuntime !== 'undefined') EdgeRuntime.waitUntil(continuacao)
-
         return responder({
           fonte: slug,
           status: 'continua',
@@ -194,7 +200,8 @@ Deno.serve(async (req) => {
       await dormir(fonte.pausaMs)
     }
   } catch (e) {
-    const mensagem = String((e as Error)?.message ?? e)
+    const mensagem = String((e as Error)?.message ?? e) +
+      (paginaAtual > 1 ? ` (página ${paginaAtual}; as anteriores já estão no espelho)` : '')
     try {
       if (execucaoId !== null) {
         await sql`select qualificador.finalizar_execucao(
