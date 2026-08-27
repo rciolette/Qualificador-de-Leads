@@ -101,11 +101,43 @@ export function chaveDocumento(v: unknown): string | null {
  * (`"phone": 51999999999`) e nossa pessoa.telefone_e164 guarda +5551999999999.
  * Comparar as duas formas inteiras nunca casa -- foi o bug 2 do diagnóstico.
  */
+/**
+ * Chave canônica de telefone. TEM QUE SER IDÊNTICA a
+ * `qualificador.chave_telefone()` no banco — mudar uma sem a outra faz o
+ * cruzamento parar de casar em silêncio (seção 5 do CLAUDE.md).
+ *
+ * A regra antiga era `slice(-11)`, e errava em três situações:
+ *   +551133334444 (fixo BR com DDI) -> o "5" do DDI entrava na chave;
+ *   +351910649613 (Portugal)        -> virava um celular de DDD 51, cruzando
+ *                                      a pessoa ERRADA em silêncio;
+ *   5199999999 x 51999999999        -> o nono dígito separava o mesmo celular.
+ *
+ * Agora: BR vira `55 + DDD + 8 últimos dígitos` (o nono é descartado dos dois
+ * lados). Outros países preservam o número inteiro com DDI.
+ */
 export function chaveTelefone(v: unknown): string | null {
   if (v === null || v === undefined) return null
-  const d = String(v).replace(/\D/g, '')
-  return d.length >= 10 ? d.slice(-11) : null
+  const bruto = String(v).trim()
+  const n = bruto.replace(/\D/g, '')
+
+  // DDI explícito por "+": ele decide, sempre. Sem isso, +1 415 555 2671 (EUA,
+  // 11 dígitos) seria lido como celular BR, que também tem 11.
+  if (bruto.startsWith('+')) {
+    if (n.startsWith('55') && (n.length === 12 || n.length === 13)) {
+      return '55' + n.slice(2, 4) + n.slice(-8)
+    }
+    return n.length >= 8 && n.length <= 15 ? n : null
+  }
+
+  // sem "+": número nacional brasileiro, que é como Assiny e Sellflux mandam
+  if (n.length === 10 || n.length === 11) return '55' + n.slice(0, 2) + n.slice(-8)
+  if ((n.length === 12 || n.length === 13) && n.startsWith('55')) {
+    return '55' + n.slice(2, 4) + n.slice(-8)
+  }
+  if (n.length >= 8 && n.length <= 15) return n
+  return null
 }
+
 
 /**
  * Acha o array de registros dentro do envelope da resposta.

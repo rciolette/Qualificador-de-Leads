@@ -7,7 +7,8 @@ import { useAuth } from '@/contexts/AuthContext'
 import {
   formatarData, formatarDuracao, formatarNumero,
   espelhar, FONTES_ESPELHADAS,
-  listarExecucoes, listarFrescor, listarIntegracoes, salvarCredencial, sincronizar, testarConexao,
+  listarExecucoes, listarFrescor, listarIntegracoes, salvarCredencial, sincronizarTudo, testarConexao,
+  type ProgressoSync,
 } from '@/lib/dados'
 import type { Diagnostico, Integracao } from '@/lib/tipos'
 import { Button } from '@/components/ui/button'
@@ -197,15 +198,26 @@ function CartaoIntegracao({
     }),
   })
 
+  // o andamento fica na tela: a base tem milhares de pessoas e isso leva minutos
+  const [andamento, setAndamento] = useState<ProgressoSync | null>(null)
+
   const sync = useMutation({
-    mutationFn: () => sincronizar(ig.slug, 100),
+    mutationFn: () => sincronizarTudo(ig.slug, { lote: 100, aoProgresso: setAndamento }),
+    onSettled: () => setAndamento(null),
     onSuccess: (r) => {
-      toast.success(`${ig.nome_exibicao} sincronizada`, {
-        description: r.mensagem
-          ?? `${formatarNumero(r.encontrados)} de ${formatarNumero(r.alvos)} encontrados` +
-             ` · ${formatarNumero(r.chamadas_http)} chamadas · ${formatarDuracao(r.duracao_ms)}`,
-      })
-      if (r.avisos?.length) toast.warning(`${r.avisos.length} aviso(s)`, { description: r.avisos[0] })
+      const completo = r.parouPor === 'nada a sincronizar'
+      const desc =
+        `${formatarNumero(r.encontrados)} encontrados em ` +
+        `${formatarNumero(r.processados)} consultados · ${r.rodadas} lote(s)`
+      if (completo) {
+        toast.success(`${ig.nome_exibicao} sincronizada`, { description: desc })
+      } else {
+        // parar no meio não é sucesso: o resto da base continua sem dado
+        toast.warning(`${ig.nome_exibicao} parou antes do fim`, {
+          description: `${desc}. Motivo: ${r.parouPor}. Rode de novo para continuar de onde parou.`,
+          duration: 12000,
+        })
+      }
       aoMudar()
     },
     onError: (e: Error) => toast.error(`Falha ao sincronizar ${ig.nome_exibicao}`, {
@@ -342,10 +354,24 @@ function CartaoIntegracao({
                 {espelho.isPending
                   ? (pagina ? `Espelhando… página ${pagina}` : 'Espelhando…')
                   : sync.isPending
-                    ? 'Sincronizando…'
+                    ? andamento
+                      ? andamento.fase === 'reduzindo'
+                        ? `Lote grande demais — tentando com ${andamento.lote}`
+                        : `Sincronizando… ${formatarNumero(andamento.processados)} consultados`
+                      : 'Sincronizando…'
                     : ehEspelhada ? 'Espelhar e cruzar' : 'Sincronizar'}
               </Button>
             </div>
+
+            {sync.isPending && andamento && (
+              <p className="text-micro text-muted-foreground">
+                Lote {andamento.rodada} · {formatarNumero(andamento.encontrados)} encontrados de{' '}
+                {formatarNumero(andamento.processados)} consultados.
+                {andamento.fase === 'reduzindo'
+                  ? ' O worker estourou; o lote diminuiu e a fila continua.'
+                  : ' Vai em lotes até acabar — pode levar minutos.'}
+              </p>
+            )}
             {!ig.ativa && (
               <p className="text-micro text-muted-foreground">
                 Grave a credencial para habilitar a sincronização.

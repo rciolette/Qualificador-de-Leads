@@ -96,6 +96,74 @@ export function sincronizar(fonte: string, limite = 100, maxIdadeHoras = 24) {
   })
 }
 
+export interface ProgressoSync {
+  rodada: number
+  processados: number
+  encontrados: number
+  /** quantas pessoas ainda faltam, segundo a última rodada */
+  lote: number
+  fase: 'rodando' | 'reduzindo' | 'pronto'
+}
+
+/**
+ * Sincroniza a fonte inteira, em lotes, até não sobrar ninguém.
+ *
+ * Uma chamada só não dá conta: a Edge Function tem orçamento fixo e o HubSpot
+ * faz três chamadas por lote (contatos, associações, negócios). Com a base em
+ * 4.430 pessoas, pedir tudo de uma vez devolve HTTP 546 (WORKER_RESOURCE_LIMIT)
+ * depois de já ter gravado parte — e sem registrar a execução, porque morre
+ * antes de `finalizar_execucao`.
+ *
+ * Então: lotes pequenos, um worker limpo por lote. Se um lote estourar mesmo
+ * assim, o tamanho cai pela metade e tenta de novo — em vez de abortar tudo.
+ */
+export async function sincronizarTudo(
+  fonte: string,
+  opcoes: {
+    lote?: number
+    maxIdadeHoras?: number
+    aoProgresso?: (p: ProgressoSync) => void
+    /** teto de segurança: nunca virar laço infinito */
+    maxRodadas?: number
+  } = {},
+): Promise<{ rodadas: number; processados: number; encontrados: number; parouPor: string }> {
+  let lote = opcoes.lote ?? 100
+  const maxIdade = opcoes.maxIdadeHoras ?? 24
+  const maxRodadas = opcoes.maxRodadas ?? 80
+
+  let rodadas = 0
+  let processados = 0
+  let encontrados = 0
+
+  while (rodadas < maxRodadas) {
+    rodadas++
+    try {
+      const r = await sincronizar(fonte, lote, maxIdade)
+
+      // a função devolve `alvos: 0` quando não há mais ninguém na janela
+      if (!r.alvos) {
+        opcoes.aoProgresso?.({ rodada: rodadas, processados, encontrados, lote, fase: 'pronto' })
+        return { rodadas, processados, encontrados, parouPor: 'nada a sincronizar' }
+      }
+
+      processados += r.alvos
+      encontrados += r.encontrados ?? 0
+      opcoes.aoProgresso?.({ rodada: rodadas, processados, encontrados, lote, fase: 'rodando' })
+    } catch (e) {
+      const msg = String((e as Error).message ?? e)
+      // 546 = o worker estourou. Não é erro de dado: é lote grande demais.
+      const estourou = msg.includes('546') || /WORKER|RESOURCE_LIMIT/i.test(msg)
+      if (estourou && lote > 10) {
+        lote = Math.max(10, Math.floor(lote / 2))
+        opcoes.aoProgresso?.({ rodada: rodadas, processados, encontrados, lote, fase: 'reduzindo' })
+        continue
+      }
+      return { rodadas, processados, encontrados, parouPor: msg }
+    }
+  }
+  return { rodadas, processados, encontrados, parouPor: `teto de ${maxRodadas} rodadas` }
+}
+
 /** Fontes pequenas o bastante para espelhar inteiras em vez de perguntar por pessoa. */
 export const FONTES_ESPELHADAS = ['memberkit', 'memberclass', 'sellflux']
 
