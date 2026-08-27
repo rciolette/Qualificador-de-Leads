@@ -7,7 +7,8 @@ import { useAuth } from '@/contexts/AuthContext'
 import {
   formatarData, formatarDuracao, formatarNumero,
   espelhar, FONTES_ESPELHADAS,
-  listarExecucoes, listarFrescor, listarIntegracoes, salvarCredencial, sincronizarTudo, testarConexao,
+  listarExecucoes, listarFrescor, listarIntegracoes, ocupadoPor, salvarCredencial,
+  sincronizarTudo, testarConexao,
   type ProgressoSync,
 } from '@/lib/dados'
 import type { Diagnostico, Integracao } from '@/lib/tipos'
@@ -35,6 +36,8 @@ export function IntegracoesPage() {
   const integracoes = useQuery({ queryKey: ['integracoes'], queryFn: listarIntegracoes })
   const frescor = useQuery({ queryKey: ['frescor'], queryFn: listarFrescor, refetchInterval: 60_000 })
   const execucoes = useQuery({ queryKey: ['execucoes'], queryFn: () => listarExecucoes(30) })
+  // 5 s: um espelhamento leva de 40 s a minutos, e o botão precisa liberar sozinho
+  const ocupada = useQuery({ queryKey: ['ocupada'], queryFn: ocupadoPor, refetchInterval: 5_000 })
 
   const invalidar = () => {
     qc.invalidateQueries({ queryKey: ['integracoes'] })
@@ -66,6 +69,7 @@ export function IntegracoesPage() {
               frescor={frescor.data?.find((f) => f.slug === ig.slug)}
               podeGravar={pode('gestao')}
               podeSincronizar={pode('operador')}
+              ocupada={ocupada.data ?? null}
               aoMudar={invalidar}
             />
           ))}
@@ -128,17 +132,21 @@ export function IntegracoesPage() {
 }
 
 function CartaoIntegracao({
-  integracao: ig, frescor, podeGravar, podeSincronizar, aoMudar,
+  integracao: ig, frescor, podeGravar, podeSincronizar, ocupada, aoMudar,
 }: {
   integracao: Integracao
   frescor?: { vencida: boolean; horas_desde: number | null; ultima_execucao: string | null }
   podeGravar: boolean
   podeSincronizar: boolean
+  /** nome da fonte que está ocupando os workers agora, se houver outra */
+  ocupada: string | null
   aoMudar: () => void
 }) {
   const [token, setToken] = useState('')
   const [diagnostico, setDiagnostico] = useState<Diagnostico | null>(null)
   const semApi = ig.slug === 'assiny' // entrada é upload de CSV, não API
+  // outra fonte está ocupando os workers: a função recusaria, então nem oferece
+  const bloqueadaPorOutra = Boolean(ocupada) && ocupada !== ig.nome_exibicao
 
   const testar = useMutation({
     mutationFn: () => testarConexao(ig.slug),
@@ -345,13 +353,19 @@ function CartaoIntegracao({
               <Button
                 variant="outline"
                 className="gap-2"
-                disabled={!ig.ativa || !podeSincronizar || sync.isPending || espelho.isPending}
+                disabled={!ig.ativa || !podeSincronizar || sync.isPending || espelho.isPending
+                          || bloqueadaPorOutra}
+                title={bloqueadaPorOutra
+                  ? `Espere ${ocupada} terminar — duas fontes ao mesmo tempo esgotam os workers`
+                  : undefined}
                 onClick={() => (ehEspelhada ? espelho.mutate() : sync.mutate())}
               >
                 <RefreshCw
                   className={sync.isPending || espelho.isPending ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
                 />
-                {espelho.isPending
+                {bloqueadaPorOutra
+                  ? `Aguardando ${ocupada}`
+                  : espelho.isPending
                   ? (pagina ? `Espelhando… página ${pagina}` : 'Espelhando…')
                   : sync.isPending
                     ? andamento
@@ -375,6 +389,13 @@ function CartaoIntegracao({
             {!ig.ativa && (
               <p className="text-micro text-muted-foreground">
                 Grave a credencial para habilitar a sincronização.
+              </p>
+            )}
+            {bloqueadaPorOutra && ig.ativa && (
+              <p className="text-micro text-muted-foreground">
+                <strong className="text-foreground">{ocupada}</strong> está rodando agora.
+                Duas fontes ao mesmo tempo esgotam os workers do projeto e derrubam
+                o que já está em andamento — este botão libera sozinho quando ela terminar.
               </p>
             )}
           </>

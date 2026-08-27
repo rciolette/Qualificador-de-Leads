@@ -238,3 +238,45 @@ export function mostrar(v: unknown): string {
   if (typeof v === 'boolean') return v ? 'sim' : 'não'
   return String(v)
 }
+
+/**
+ * Que fonte está ocupando os workers agora.
+ *
+ * Espelhar duas fontes ao mesmo tempo esgota os workers do projeto e derruba
+ * até o sync do HubSpot que estiver rodando. A função já recusa — mas recusar
+ * DEPOIS do clique é uma má troca: o usuário vê um erro vermelho por ter feito
+ * algo razoável. Com isto a tela desabilita antes, e diz quem está na frente.
+ */
+export async function ocupadoPor(): Promise<string | null> {
+  const sb = exigirSupabase()
+
+  // 1. espelhamento: registra `em_andamento` ao começar, então é direto
+  const { data } = await sb
+    .from('integracao_execucao')
+    .select('integracao_id, executado_em, integracao(slug, nome_exibicao)')
+    .eq('status', 'em_andamento')
+    .order('executado_em', { ascending: false })
+    .limit(1)
+  // o embed do PostgREST vem como objeto ou como array de um, dependendo de como
+  // ele resolve a relação: aceitar os dois evita um null silencioso
+  const linha = data?.[0] as { integracao?: unknown } | undefined
+  const emb = Array.isArray(linha?.integracao) ? linha?.integracao[0] : linha?.integracao
+  const nome = (emb as { nome_exibicao?: string } | undefined)?.nome_exibicao
+  if (nome) return nome
+
+  // 2. sync do HubSpot: ele só grava a linha de execução no FIM do lote, então
+  //    não aparece acima enquanto roda. O sinal confiável é a escrita: durante
+  //    um lote o snapshot é atualizado continuamente. Menos de 90 s desde a
+  //    última gravação significa que há um lote em curso.
+  //    (O certo seria o sync registrar `em_andamento` como o espelhar faz —
+  //    é o critério 5 da Tarefa 0-B, e está anotado como dívida no CLAUDE.md.)
+  const { data: recente } = await sb
+    .from('crm_snapshot')
+    .select('sync_em')
+    .order('sync_em', { ascending: false })
+    .limit(1)
+  const ultima = (recente?.[0] as { sync_em?: string } | undefined)?.sync_em
+  if (ultima && Date.now() - new Date(ultima).getTime() < 90_000) return 'HubSpot'
+
+  return null
+}
