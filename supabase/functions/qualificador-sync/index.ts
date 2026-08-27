@@ -187,8 +187,16 @@ Deno.serve(async (req) => {
 })
 
 /**
- * Grava os snapshots. Uma transação por pessoa: falha de rede no meio do lote
- * não deixa metade de um snapshot no banco (critério de aceite da fase 2).
+ * Grava os snapshots.
+ *
+ * UMA transação para o lote inteiro, não uma por pessoa. A versão anterior
+ * abria `sql.begin()` por pessoa — com lote de 100, eram 100 round-trips em
+ * série ao Postgres, e a Edge Function estourava com HTTP 546
+ * (WORKER_RESOURCE_LIMIT) antes de terminar. Não era memória: medido, o
+ * payload é 1,7 KB por pessoa e 3,4 negócios em média. Era o vai-e-vem.
+ *
+ * A garantia da fase 2 — "falha no meio não deixa metade de um snapshot" —
+ * continua valendo, e mais forte: agora o lote inteiro é atômico.
  */
 async function gravar(
   // deno-lint-ignore no-explicit-any
@@ -203,9 +211,9 @@ async function gravar(
     porPessoa.set(g.pessoa_id, atual)
   }
 
-  for (const [, itens] of porPessoa) {
-    // deno-lint-ignore no-explicit-any
-    await sql.begin(async (tx: any) => {
+  // deno-lint-ignore no-explicit-any
+  await sql.begin(async (tx: any) => {
+    for (const [, itens] of porPessoa) {
       for (const g of itens) {
         contagem[g.tabela] = (contagem[g.tabela] ?? 0) + 1
         switch (g.tabela) {
@@ -278,7 +286,7 @@ async function gravar(
             break
         }
       }
-    })
-  }
+    }
+  })
   return contagem
 }
