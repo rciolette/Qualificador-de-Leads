@@ -76,7 +76,7 @@ branch pendente — `main-j9m1xx` já está contido no `main`.
 | Tarefa 1 | Motor de iniciativas: filtros, funil, 8 eixos de score | entregue; 6 de 8 aceites |
 | Tarefa 2 | Funil de etapas encadeadas (`filtrar_em_etapas`) | entregue com tela |
 | Tarefa 2 · (1) e (4) | colunas no resultado · modelo sem gerar lista | **entregues**, 10/10 aceites |
-| Tarefa 2 · (2) e (3) | múltiplas plataformas por etapa · de-para | **desenhados e aprovados**, não implementados |
+| Tarefa 2 · (2) e (3) | múltiplas plataformas por etapa · de-para | desenhados e aprovados · **passos 1 e 2 no ar** (migration 52) |
 | Fase 3 | Métricas e saúde de dados | entregue — `/saude-dos-dados` |
 | Fase 5 | Interface | 6 telas; o fluxo guiado **ainda não** é o caminho principal |
 | Fase 6 | Ciclo fechado | não iniciada |
@@ -162,27 +162,25 @@ acontece em SQL (`qualificador.reconciliar`). Só o HubSpot fica em
    Sellflux estouraram; precisam retomar de onde pararam, não recomeçar.
 5. **Ler `divisao_times`.** Hoje toda a lista cai em `prioridade_times[1]` — foi
    por isso que a lista de teste saiu inteira como "IS".
-5b. **Tarefa 2, itens (2) e (3)** — o **desenho está pronto** e aguarda o aval do
-   Raphael: `docs/tarefa-2-multiplas-plataformas-e-de-para.md`. Em uma linha: a
-   condição passa a ter **três estados** (verdadeiro / falso / sem dado), o
-   `sem_dado` não vota, o combinador (`qualquer` / `todas`) é da etapa e o
-   `manter_sem_dado` vira desempate para quando nada pôde ser julgado. O de-para
-   editável é de **vocabulário**, não de identidade — chave de cruzamento
-   continua fechada. 4 perguntas abertas na seção 9 do documento.
-5b-bis. **BUG LATENTE, achado em 28/08 — as properties de NEGÓCIO do HubSpot
-   estão inalcançáveis.** `crm_snapshot.props_deals` é indexado por **id de
-   negócio** (`{deal_id: {prop: valor}}`), mas `campo_bate` e `valor_do_campo`
-   fazem `props_deals->caminho`, como se fosse objeto plano. Medido numa pessoa
-   com 4 negócios e `origem_de_trafego` preenchida: `campo_bate` devolve `false`
-   e `valor_do_campo` devolve `null`. **Ainda não explodiu** só porque
-   `campo_filtravel` não tem nenhum campo com fonte `hubspot_contato` /
-   `hubspot_negocio` — que é o que liga `nativo`. Catalogar as 18 props de
-   negócio puxa o gatilho. Consertar exige decisão de produto: 508 das 567
-   pessoas têm mais de um negócio (média 3,05) e **483 discordam de si mesmas**
-   em `origem_de_trafego` — daí o `quantificador` (`algum` / `todo`) do desenho.
-5c. **O fluxo guiado ainda não é o caminho principal.** As 6 telas continuam
-   irmãs na nav e a raiz cai em `/integracoes`. O funil também não começa por
-   upload: `filtrar_em_etapas` parte de `v_pessoa_completa`, já reconciliada.
+5b. **Tarefa 2, itens (2) e (3)** — desenho em
+   `docs/tarefa-2-multiplas-plataformas-e-de-para.md`, **aprovado pelo Raphael**
+   (as 4 decisões estão na seção 9 daquele doc, não reabrir). Dos 5 passos da
+   seção 8: **1 e 2 entregues** (migration 52 — condição ternária, combinador
+   `qualquer`/`todas`, quantificador nos negócios). Faltam o 3 (catalogar), o 4
+   (`traduzir` + `de_para`) e o 5 (tela com multi-seleção).
+5b-bis. ~~BUG LATENTE: as properties de NEGÓCIO do HubSpot estão
+   inalcançáveis.~~ **Consertado em 27/08, migration 52.** `props_deals` é
+   indexado por id de negócio e vinha sendo lido como objeto plano; agora
+   `condicao_avalia` itera os negócios e o `quantificador` (`algum` / `todo`)
+   decide se a condição vale para um ou para todos. Medido na mesma pessoa:
+   `campo_bate` era `false`, virou `true`; `valor_do_campo` era `null`, virou
+   `["Forms Onboarding Nath","IniciAmazon | Nath"]`.
+   Ver `docs/tarefa-2-passos-1-2-condicao-ternaria.md`.
+5b-ter. **Passo 3 do desenho: catalogar as props em `campo_filtravel`.** As 19 de
+   negócio e as 36 de contato, com `fonte` nativa. O Raphael confirmou a ordem
+   (opção B): consertar primeiro, catalogar depois. O conserto está feito, então
+   este é o próximo passo. Hoje `campo_filtravel` tem 41 campos e **0** com fonte
+   nativa.
 6. Decidir `ECONT CONTABILIDADE DO ECOMMERCE` (2.370 transações fora do catálogo,
    hoje bloqueia a importação) e a `area_membros` de `ECONT BH`.
 7. Decidir qual escala de classificação manda: `classificacao_leadscore` (5),
@@ -228,6 +226,18 @@ do dado exclui, ou não.
   Postgres ao recriar função. Foi assim que `credencial_ler` — que devolve o token
   do HubSpot em texto puro — voltou a ser executável por `authenticated` depois de
   a migration 10 tê-la revogado. **Revogar depois de cada replace não é opcional.**
+- **`props_deals` é indexado por ID DE NEGÓCIO, não por property.** A estrutura
+  é `{deal_id: {property: valor}}`. Ler `props_deals->'origem_de_trafego'`
+  devolve null **sem erro**, e todo filtro e coluna sobre negócio vira vazio em
+  silêncio. Consertado na migration 52: `valores_do_negocio` itera
+  `jsonb_each(props_deals)`. E o conserto não é só um `->` a mais — 483 das 567
+  pessoas discordam de si mesmas entre os próprios negócios, então a condição
+  precisa do `quantificador` (`algum` / `todo`) para ter resposta.
+- **Uma condição de etapa tem TRÊS estados, não dois.** `verdadeiro`, `falso` e
+  `sem_dado` — e o `sem_dado` **não vota**. Se ele valesse `true`, um único dado
+  faltando faria a etapa inteira passar sob o combinador `qualquer`, e o refino
+  destruiria o filtro. `manter_sem_dado` só decide quando **nenhuma** condição
+  pôde ser julgada.
 - **Rótulo de campo não é único no catálogo.** "Dias sem acessar" existe na
   MemberClass e no MemberKit. Ao expor rótulos como cabeçalho de coluna, os dois
   saíam iguais e ninguém sabia qual era qual. `resolver_colunas` qualifica o
@@ -326,6 +336,8 @@ Nomear sempre `qualificador_AAAAMMDD_NN_descricao`, com `NN` conferido em
 - `docs/telas-iniciativas.md` — as telas do motor, o aceite no ar e os 3 defeitos
 - `docs/tarefa-2-fluxo-guiado.md` — a especificação do fluxo guiado (4 decisões fechadas)
 - `docs/tarefa-2-colunas-e-modelos.md` — itens (1) e (4) da spec, entregues
+- `docs/tarefa-2-multiplas-plataformas-e-de-para.md` — o desenho de (2) e (3), com as 4 decisões
+- `docs/tarefa-2-passos-1-2-condicao-ternaria.md` — passos 1 e 2 do desenho, entregues
 - `docs/tarefa-2-multiplas-plataformas-e-de-para.md` — **desenho** dos itens (2) e
   (3), o bug latente do `props_deals` e 4 perguntas para o Raphael
 - Projeto Claude "Qualificador de Leads" → `claude/mapa-apis-v1.md` (as 4 APIs) e
