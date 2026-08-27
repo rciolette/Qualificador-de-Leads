@@ -58,10 +58,24 @@ Front: `/importar`, `/integracoes` e `/catalogo` funcionam.
 `/saude`, `/iniciativas`, `/listas` são casca.
 
 Edge Functions no ar: `qualificador-credencial-salvar`, `qualificador-sync`,
-`qualificador-importar` (genérico), `qualificador-importar-assiny`.
+`qualificador-espelhar`, `qualificador-importar` (genérico), `qualificador-importar-assiny`.
+
+## 3b. Tarefa 0-B — as três fontes pequenas (27/08)
+
+MemberKit, MemberClass e Sellflux **não sincronizam mais pessoa a pessoa**. As três
+são pequenas (a maior tem 1.433 registros); perguntar uma por vez custava 1.293
+chamadas HTTP por execução para não cruzar nada. Agora a fonte inteira é espelhada
+em `qualificador.espelho_<fonte>` pela função `qualificador-espelhar` e o cruzamento
+acontece em SQL (`qualificador.reconciliar`). Detalhes em `docs/tarefa-0b.md`.
+
+Regra que vale daqui em diante: **fonte pequena se espelha, fonte grande se consulta.**
+Só o HubSpot fica em `qualificador-sync`.
 
 ## 4. Trabalho em aberto (pegue daqui)
 
+0. **Publicar o que já está no repo mas não em produção:**
+   `supabase functions deploy qualificador-sync` (tira os 3 adaptadores antigos) e
+   `npm run deploy` (front com o botão "Espelhar e cruzar").
 1. **Gravar as 4 credenciais** (hubspot, memberclass, memberkit, sellflux) e
    rodar os aceites da fase 2 — só o Raphael pode gravar; é o bloqueio nº 1.
 2. **Fechar o importador genérico** (4 arquivos alterados sem commit:
@@ -107,6 +121,19 @@ Edge Functions no ar: `qualificador-credencial-salvar`, `qualificador-sync`,
   `hasNextPage=false`. Sem telefone; CPF só em `/student/report`.
 - **Sellflux:** rotas de CRM exigem `acting_user_id`, obtido antes em
   `GET /api/v1/crm/team/users`.
+- **Chave de telefone = últimos 11 dígitos, sem DDI.** A Sellflux devolve
+  `"phone": 51999999999` e nós guardamos `+5551999999999`: comparação exata nunca
+  casa. A regra existe em DOIS lugares — `qualificador.chave_telefone()` no banco e
+  `chaveTelefone()` em `fontes.ts`. Mudar uma sem a outra faz o cruzamento parar de
+  casar **em silêncio**.
+- **Sellflux: `email` vem `null` na maioria dos leads.** Nunca filtrar lead por
+  e-mail exato — foi o bug que fazia a integração "não conferir nada".
+- **MemberClass: usar `/api/v1/student/report`**, o relatório do tenant inteiro.
+  `/user/informations?email=…` devolve 404 quando não acha, e todo "não tem conta"
+  virava linha de erro.
+- **MemberKit: 404 é resposta legítima.** A base Assiny é IniciAmazon e a academia
+  conectada é Consultorias/Mentorias — a sobreposição é pequena por natureza do
+  negócio, não por falha.
 - **`Qualificador de Leads/`** na raiz é um clone vazio de 26/08, já no
   `.gitignore`. O trabalho vive na raiz. Não editar lá dentro.
 - **O sandbox não apaga arquivos:** renomeie para `_to_delete/` em vez de `rm`.

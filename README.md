@@ -37,6 +37,8 @@ qualificador_20260826_10_credenciais_vault
 qualificador_20260826_11_snapshots_externos
 qualificador_20260826_12_hubspot_config_validado
 qualificador_20260826_13_memberkit_config_validado
+qualificador_20260827_14_espelhos
+qualificador_20260827_15_reconciliacao
 ```
 
 ## Edge Functions
@@ -44,7 +46,8 @@ qualificador_20260826_13_memberkit_config_validado
 | Função | Papel mínimo | O que faz |
 |---|---|---|
 | `qualificador-credencial-salvar` | gestão | grava o token da integração no Vault sob `qualificador_<slug>` |
-| `qualificador-sync` | operador | sincroniza HubSpot, MemberKit, MemberClass ou Sellflux |
+| `qualificador-sync` | operador | sincroniza o HubSpot (a única fonte grande) e testa a conexão das quatro |
+| `qualificador-espelhar` | operador | espelha MemberKit, MemberClass ou Sellflux inteiras e reconcilia em SQL |
 
 ```bash
 supabase functions deploy qualificador-sync --project-ref qevnfgopjupsmwvflcza
@@ -78,3 +81,4 @@ select qualificador.ingerir_assiny('<importacao_id>');
 
 - [docs/fase-1.md](docs/fase-1.md) — catálogo e ingestão: aceite, divergências do PRD, decisões
 - [docs/fase-2.md](docs/fase-2.md) — integrações: credenciais, conectores, correções às APIs
+- [docs/tarefa-0b.md](docs/tarefa-0b.md) — por que MemberKit, MemberClass e Sellflux não cruzavam nada, e o que substituiu os três adaptadores
