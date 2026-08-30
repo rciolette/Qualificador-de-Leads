@@ -9,7 +9,6 @@ import { IntegracoesPage } from '@/pages/IntegracoesPage'
 import { CatalogoPage } from '@/pages/CatalogoPage'
 import { SaudePage } from '@/pages/SaudePage'
 
-import { IniciativasPage } from '@/pages/IniciativasPage'
 import { FluxoPage } from '@/pages/FluxoPage'
 import { ListasPage } from '@/pages/ListasPage'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -144,7 +143,9 @@ export default function App() {
                   já circulou em link colado. Mesma tela, um caminho canônico. */}
               <Route path="/saude-dos-dados" element={<SaudePage />} />
               <Route path="/saude" element={<Navigate to="/saude-dos-dados" replace />} />
-              <Route path="/iniciativas" element={<IniciativasPage />} />
+              {/* iniciativa e lista viraram uma tela só: a campanha e o arquivo
+                  que ela produziu nunca são procurados separados. */}
+              <Route path="/iniciativas" element={<Navigate to="/listas" replace />} />
               <Route path="/iniciativas/nova" element={<Navigate to="/fluxo" replace />} />
               <Route path="/listas" element={<ListasPage />} />
               <Route path="/catalogo" element={<CatalogoPage />} />

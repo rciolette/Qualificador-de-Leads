@@ -227,7 +227,19 @@ que o fluxo não faz:
 | `/saude-dos-dados` | métricas da base; é o lugar natural do botão de remedir cobertura |
 | `/listas` | rebaixar o XLSX de uma lista antiga; o fluxo só dá acesso à da sessão |
 | `/catalogo` | referência dos projetos e do de-para |
-| `/iniciativas` | histórico das campanhas salvas (o `/fluxo` salva uma a cada lista gerada) |
+
+**`/iniciativas` foi fundida em `/listas`.** A iniciativa é a campanha (filtros e
+pesos), a lista é o resultado — e nunca se procura uma sem a outra. Agora cada
+lista aparece sob a iniciativa que a produziu, numa tela só.
+
+A consulta parte da **iniciativa**, não da lista, e isso é de propósito: as duas
+nascem juntas (o fluxo chama `salvarIniciativa` e `gerarLista` na mesma
+mutation), mas `gerar_lista` já estourou o statement timeout de 8 s uma vez, e
+aí sobra uma iniciativa sem lista. Partindo da lista, ela ficaria invisível — e
+é justamente a que interessa diagnosticar. Ela aparece com um aviso.
+
+`/iniciativas` e `/iniciativas/nova` continuam de pé como redirect.
+`listarIniciativas()` foi removida de `iniciativas.ts`: virou código morto.
 
 ### Cobertura dos campos — novo
 

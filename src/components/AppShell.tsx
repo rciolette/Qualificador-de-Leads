@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import {
-  Activity, ChevronDown, Database, ListChecks, LogOut, Plug, Route, Target,
+  Activity, ChevronDown, Database, ListChecks, LogOut, Plug, Route,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
@@ -20,8 +20,7 @@ const PRINCIPAL = { para: '/fluxo', rotulo: 'Montar uma lista', icone: Route }
 const AVANCADO = [
   { para: '/integracoes', rotulo: 'Integrações', icone: Plug },
   { para: '/saude-dos-dados', rotulo: 'Saúde dos dados', icone: Activity },
-  { para: '/iniciativas', rotulo: 'Iniciativas', icone: Target },
-  { para: '/listas', rotulo: 'Listas geradas', icone: ListChecks },
+  { para: '/listas', rotulo: 'Listas geradas', icone: ListChecks },  // e as iniciativas que as geraram
   { para: '/catalogo', rotulo: 'Catálogo', icone: Database },
 ]
 

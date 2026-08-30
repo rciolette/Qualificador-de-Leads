@@ -340,13 +340,6 @@ export async function listarRecortes(): Promise<Recorte[]> {
   return data ?? []
 }
 
-export async function listarIniciativas(): Promise<Iniciativa[]> {
-  const { data, error } = await exigirSupabase()
-    .from('iniciativa').select('*').order('criada_em', { ascending: false })
-  if (error) throw error
-  return data ?? []
-}
-
 export async function salvarIniciativa(i: Partial<Iniciativa> & { etapas: Etapa[] }) {
   const { etapas, ...resto } = i
   const linha = { ...resto, filtros: { etapas } }
