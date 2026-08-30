@@ -101,6 +101,19 @@ export function FluxoPage() {
   const [progresso, setProgresso] = useState<Progresso | null>(null)
   const [analises, setAnalises] = useState<Analise[]>([])
   const [camposArquivo, setCamposArquivo] = useState<CampoCanonico[]>([])
+  /**
+   * Mais de um arquivo abre uma pergunta antes de processar.
+   *
+   * Soltar três relatórios e ver o app começar a ler os três sem dizer o que vai
+   * fazer com quem aparece em dois deles é o tipo de coisa que só se descobre
+   * depois. A pergunta é curta e o padrão é o que quase sempre se quer.
+   */
+  const [aConfirmar, setAConfirmar] = useState<File[] | null>(null)
+
+  function receberArquivos(arquivos: File[]) {
+    if (arquivos.length > 1) setAConfirmar(arquivos)
+    else analisar.mutate(arquivos)
+  }
 
   const importacoes = useQuery({ queryKey: ['importacoes'], queryFn: () => listarImportacoes(20) })
 
@@ -305,10 +318,24 @@ export function FluxoPage() {
           <ZonaDeUpload
             progresso={progresso}
             ocupado={analisar.isPending}
-            aoReceber={(arquivos) => analisar.mutate(arquivos)}
-            titulo="Arraste a base de compras da Assiny aqui"
+            aoReceber={receberArquivos}
+            titulo="Solte os relatórios da Assiny aqui — pode ser mais de um"
             ajuda="Ou clique para escolher. O app lê as colunas e pergunta o de-para antes de gravar."
           />
+
+          {aConfirmar && (
+            <ConfirmarVariosArquivos
+              arquivos={aConfirmar}
+              aoMesclar={() => { analisar.mutate(aConfirmar); setAConfirmar(null) }}
+              aoSeparar={() => {
+                // um de cada vez: a pessoa confere a contribuição de cada
+                // arquivo antes de soltar o próximo
+                analisar.mutate([aConfirmar[0]])
+                setAConfirmar(aConfirmar.length > 1 ? aConfirmar.slice(1) : null)
+              }}
+              aoCancelar={() => setAConfirmar(null)}
+            />
+          )}
 
           {analises.length > 0 && (
             <div className="space-y-6">
@@ -318,12 +345,23 @@ export function FluxoPage() {
                   analise={a}
                   campos={camposArquivo}
                   aoConcluir={() => {
-                    setAnalises((x) => x.filter((y) => y.importacao_id !== a.importacao_id))
+                    const restantes = analises.filter((y) => y.importacao_id !== a.importacao_id)
+                    setAnalises(restantes)
                     qc.invalidateQueries({ queryKey: ['importacoes'] })
                     qc.invalidateQueries({ queryKey: ['funil'] })
-                    toast.success('Base importada', {
-                      description: 'Pode seguir para os filtros.',
-                    })
+                    qc.invalidateQueries({ queryKey: ['origens'] })
+                    // o último arquivo leva junto para a Etapa 2: importar não é
+                    // o objetivo de ninguém, é o que se faz para poder filtrar
+                    if (restantes.length === 0) {
+                      setPasso(2)
+                      toast.success('Base importada', {
+                        description: 'Escolha de onde consultar para começar a filtrar.',
+                      })
+                    } else {
+                      toast.success('Arquivo importado', {
+                        description: `Faltam ${restantes.length}.`,
+                      })
+                    }
                   }}
                   aoDescartar={() =>
                     setAnalises((x) => x.filter((y) => y.importacao_id !== a.importacao_id))}
@@ -344,10 +382,17 @@ export function FluxoPage() {
                       <span className="truncate">
                         {i.nome ?? i.arquivo}
                         <Badge variant={i.status === 'ingerido' ? 'secondary' : 'destructive'}
-                          className="ml-2 text-micro">{i.status}</Badge>
+                          className="ml-2 text-micro">
+                          {i.status === 'ingerido' ? 'pronto' : i.status}
+                        </Badge>
                       </span>
+                      {/* "327 novas de 1.853" lia-se como se 1.526 tivessem
+                          falhado. São 1.853 linhas do arquivo que produziram 327
+                          pessoas que o app ainda não conhecia — o resto já
+                          estava lá, e isso é o esperado, não uma perda. */}
                       <span className="shrink-0 tabular-nums text-muted-foreground">
-                        {formatarNumero(i.linhas_novas)} novas de {formatarNumero(i.linhas_lidas)}
+                        {formatarNumero(i.linhas_lidas)} linhas ·{' '}
+                        {formatarNumero(i.linhas_novas)} pessoas novas
                       </span>
                     </li>
                   ))}
@@ -365,11 +410,10 @@ export function FluxoPage() {
             </CardContent>
           </Card>
 
-          <div className="flex justify-end">
-            <Button className="gap-2" onClick={() => setPasso(2)}>
-              Ir para os filtros <ArrowRight className="h-4 w-4" />
-            </Button>
-          </div>
+          {/* O botão "Ir para os filtros" saiu: a ingestão leva sozinha. Ele
+              continua fazendo falta em um caso — a base já está no app e não há
+              nada a subir — e para esse caso a trilha de passos no topo já
+              serve. */}
         </div>
       )}
 
@@ -672,6 +716,78 @@ export function FluxoPage() {
         </div>
       )}
     </>
+  )
+}
+
+/**
+ * O que fazer com vários arquivos de uma vez.
+ *
+ * Uma ressalva que a tela precisa dizer, porque é contraintuitiva: **as duas
+ * opções produzem o mesmo banco**. `qualificador.pessoa` não tem coluna de lote,
+ * e a ingestão faz upsert por e-mail → documento → telefone; a mesma pessoa em
+ * dois arquivos vira uma linha nos dois caminhos. Prometer isolamento aqui seria
+ * mentir sobre o que o schema faz.
+ *
+ * O que muda de verdade é o RITMO: mesclar processa tudo de uma vez, separar
+ * processa um por vez para você conferir a contribuição de cada arquivo antes
+ * de soltar o próximo. Isolar universos de verdade exigiria uma coluna de lote
+ * em pessoa/transacao e um filtro por lote no funil — decisão de produto, não
+ * de tela.
+ */
+function ConfirmarVariosArquivos({
+  arquivos, aoMesclar, aoSeparar, aoCancelar,
+}: {
+  arquivos: File[]
+  aoMesclar: () => void
+  aoSeparar: () => void
+  aoCancelar: () => void
+}) {
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-heading">
+          {arquivos.length} arquivos de uma vez
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <ul className="flex flex-wrap gap-1.5">
+          {arquivos.map((a) => (
+            <Badge key={a.name} variant="secondary" className="font-normal">{a.name}</Badge>
+          ))}
+        </ul>
+
+        <div className="grid gap-2 sm:grid-cols-2">
+          <button
+            onClick={aoMesclar}
+            className="rounded-lg border border-primary bg-primary/5 p-3 text-left transition-colors hover:bg-primary/10"
+          >
+            <span className="block text-label font-medium">Mesclar num universo só</span>
+            <span className="mt-0.5 block text-micro text-muted-foreground">
+              Lê os {arquivos.length} de uma vez. Recomendado.
+            </span>
+          </button>
+          <button
+            onClick={aoSeparar}
+            className="rounded-lg border border-border p-3 text-left transition-colors hover:bg-muted"
+          >
+            <span className="block text-label font-medium">Tratar separados</span>
+            <span className="mt-0.5 block text-micro text-muted-foreground">
+              Um de cada vez, para conferir o de-para e a contagem de cada um.
+            </span>
+          </button>
+        </div>
+
+        <p className="flex items-start gap-2 rounded-lg bg-muted/50 px-3 py-2 text-micro text-muted-foreground">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+          Nos dois casos, quem aparece em mais de um arquivo continua sendo{' '}
+          <strong>uma pessoa só</strong> — o cruzamento é por e-mail, depois
+          documento, depois telefone. O que muda é o ritmo da conferência, não o
+          resultado no banco.
+        </p>
+
+        <Button variant="ghost" size="sm" onClick={aoCancelar}>Cancelar</Button>
+      </CardContent>
+    </Card>
   )
 }
 

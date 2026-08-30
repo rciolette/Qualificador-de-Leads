@@ -326,6 +326,33 @@ do dado exclui, ou não.
 
 ## 5. Armadilhas já pagas — não repetir
 
+- **`jsonb_typeof(x) <> 'array'` é NULL quando a chave não existe, não TRUE.**
+  Foi assim que `resolver_etapa` (migration 67) fez **toda etapa salva no
+  formato antigo parar de filtrar**: sem a chave `condicoes`, o CASE caía no
+  ramo errado e a etapa saía com `"condicoes": []`, que `campo_bate` trata como
+  "sem condição, todo mundo passa". A iniciativa "Corujão · recuperar perdido"
+  abria com 3 etapas na tela e devolvia 2.443 — a base inteira pós-bloqueio.
+  Sem erro, sem aviso, com as etapas ainda listadas como se valessem. Use
+  `is distinct from`, que trata NULL como valor. Reparado na migration 82; hoje
+  a mesma iniciativa dá 2.443 → 1.502 → 655 → **625**.
+- **O gargalo do funil não era `condicao_avalia`.** Medido fase a fase: montar o
+  objeto por pessoa 2.175 ms · os 8 updates de bloqueio 492 ms · o laço de
+  etapas inteiro **138 ms** · o join de score 134 ms. Antes de otimizar o motor
+  de condições, meça — a intuição erra o alvo aqui.
+- **Bloco `exception` em plpgsql abre uma SUBTRANSAÇÃO por chamada.**
+  `como_bool` / `como_ts` são `exception when others then return null`, e o funil
+  as chamava 4.430 × 7 = ~31 mil vezes por clique. Elas continuam certas para
+  dado de API; o que mudou é que rodam uma vez, ao materializar
+  `pessoa_dados`, e o resultado fica em coluna tipada.
+- **Temp table sem `analyze` faz o planner assumir ~1 linha.** `filtrar_em_etapas`
+  levava 4 s porque o planner escolhia nested loop e executava `v_eixos_score`
+  uma vez por pessoa; a mesma view custa 369 ms com hash join. Um `analyze` na
+  temp table muda o plano inteiro.
+- **`pessoa_dados` envelhece por DOIS motivos.** Mudança nas 7 tabelas-fonte
+  (triggers statement-level marcam suja) **e a virada do dia** —
+  `v_pessoa_completa` usa `CURRENT_DATE` em `dias_desde_ultima_compra` e afins.
+  Sem a segunda condição, o funil passaria a mentir toda manhã.
+
 - **DUAS CHAVES PARA O MESMO CAMPO, e a errada cortava 100% em silêncio.**
   `campo_filtravel` expõe `id` (`mc.tem_conta`) e `caminho` (`tem_memberclass`).
   A tela grava o **id** em `colunas[]`, mas `condicoes[].campo` esperava o
