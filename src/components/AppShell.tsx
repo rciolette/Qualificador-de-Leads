@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import {
-  Activity, ChevronDown, Database, FileUp, ListChecks, LogOut, Plug, Route, Target,
+  Activity, ChevronDown, Database, ListChecks, LogOut, Plug, Route, Target,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
@@ -14,8 +14,10 @@ import { cn } from '@/lib/utils'
  */
 const PRINCIPAL = { para: '/fluxo', rotulo: 'Montar uma lista', icone: Route }
 
+// "Importar" saiu: era a mesma tela do passo 1 do fluxo. O que sobrou aqui não
+// é caminho alternativo para montar lista — é o que o fluxo NÃO faz: conectar as
+// plataformas, medir a saúde do dado, rebaixar uma lista antiga, ver o catálogo.
 const AVANCADO = [
-  { para: '/importar', rotulo: 'Importar', icone: FileUp },
   { para: '/integracoes', rotulo: 'Integrações', icone: Plug },
   { para: '/saude-dos-dados', rotulo: 'Saúde dos dados', icone: Activity },
   { para: '/iniciativas', rotulo: 'Iniciativas', icone: Target },

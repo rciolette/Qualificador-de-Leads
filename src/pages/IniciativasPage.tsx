@@ -20,7 +20,7 @@ export function IniciativasPage() {
         descricao="Cada iniciativa guarda os filtros e os pesos que geraram suas listas. É isso que permite comparar um disparo com outro depois."
         acao={
           <Button asChild className="gap-2">
-            <Link to="/iniciativas/nova"><Plus className="h-4 w-4" /> Nova iniciativa</Link>
+            <Link to="/fluxo"><Plus className="h-4 w-4" /> Montar uma lista</Link>
           </Button>
         }
       />
@@ -81,7 +81,7 @@ export function IniciativasPage() {
               </p>
             </div>
             <Button asChild className="gap-2">
-              <Link to="/iniciativas/nova"><Plus className="h-4 w-4" /> Criar a primeira</Link>
+              <Link to="/fluxo"><Plus className="h-4 w-4" /> Montar a primeira</Link>
             </Button>
           </CardContent>
         </Card>

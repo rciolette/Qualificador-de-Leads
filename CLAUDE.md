@@ -204,6 +204,31 @@ pós-bloqueio, como tinham que ser.
    das etapas do usuário, para a queda de 4.430 → 2.443 não parecer culpa dos
    filtros que a pessoa montou.
 
+### As telas duplicadas saíram (30/08)
+
+`/importar` e `/iniciativas/nova` eram as versões avulsas dos passos 1 e 2 do
+fluxo guiado — mesmo upload, mesmo `MapeamentoArquivo` (que já traz o botão
+"Importar N linhas"), mesmo `ConstrutorEtapas`, mesmo motor. **Duas UIs para o
+mesmo trabalho divergem:** o rascunho em `sessionStorage`, o desfazer, o aviso
+de cobertura e o tratamento de erro do funil foram só para o `/fluxo`, e quem
+entrasse pela porta antiga usava uma versão pior sem saber disso.
+
+As rotas continuam de pé como `Navigate` para `/fluxo`, porque já circularam em
+link colado. Os arquivos estão em `_to_delete/` (o sandbox não apaga).
+`listarImportacoes` no fluxo subiu de 5 para 20 para não perder o histórico que
+a tela de importar mostrava.
+
+**O que ficou em "Avançado" não é caminho alternativo para montar lista** — é o
+que o fluxo não faz:
+
+| tela | por que fica |
+|---|---|
+| `/integracoes` | credenciais, teste de conexão, espelhamento, sync — nada disso existe no fluxo |
+| `/saude-dos-dados` | métricas da base; é o lugar natural do botão de remedir cobertura |
+| `/listas` | rebaixar o XLSX de uma lista antiga; o fluxo só dá acesso à da sessão |
+| `/catalogo` | referência dos projetos e do de-para |
+| `/iniciativas` | histórico das campanhas salvas (o `/fluxo` salva uma a cada lista gerada) |
+
 ### Cobertura dos campos — novo
 
 `qualificador.cobertura_campo` (tabela) + `medir_cobertura()` respondem

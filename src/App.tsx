@@ -7,11 +7,9 @@ import { AppShell } from '@/components/AppShell'
 import { LoginPage } from '@/pages/LoginPage'
 import { IntegracoesPage } from '@/pages/IntegracoesPage'
 import { CatalogoPage } from '@/pages/CatalogoPage'
-import { ImportarPage } from '@/pages/ImportarPage'
 import { SaudePage } from '@/pages/SaudePage'
 
 import { IniciativasPage } from '@/pages/IniciativasPage'
-import { IniciativaNovaPage } from '@/pages/IniciativaNovaPage'
 import { FluxoPage } from '@/pages/FluxoPage'
 import { ListasPage } from '@/pages/ListasPage'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -133,14 +131,21 @@ export default function App() {
               {/* o fluxo guiado é o caminho principal (docs/tarefa-2-fluxo-guiado.md) */}
               <Route index element={<Navigate to="/fluxo" replace />} />
               <Route path="/fluxo" element={<FluxoPage />} />
-              <Route path="/importar" element={<ImportarPage />} />
+              {/* /importar e /iniciativas/nova eram as versões avulsas dos passos
+                  1 e 2 do fluxo — mesmo upload, mesmo de-para, mesmo construtor
+                  de etapas, mesmo motor. Duas UIs para o mesmo trabalho divergem:
+                  o rascunho em sessionStorage, o desfazer e o aviso de cobertura
+                  foram só para o fluxo, e quem entrasse pela porta antiga usava
+                  uma versão pior sem saber. As rotas ficam de pé como redirect
+                  porque já circularam em link colado. */}
+              <Route path="/importar" element={<Navigate to="/fluxo" replace />} />
               <Route path="/integracoes" element={<IntegracoesPage />} />
               {/* A tarefa 3 pediu /saude-dos-dados; /saude fica de pé porque
                   já circulou em link colado. Mesma tela, um caminho canônico. */}
               <Route path="/saude-dos-dados" element={<SaudePage />} />
               <Route path="/saude" element={<Navigate to="/saude-dos-dados" replace />} />
               <Route path="/iniciativas" element={<IniciativasPage />} />
-              <Route path="/iniciativas/nova" element={<IniciativaNovaPage />} />
+              <Route path="/iniciativas/nova" element={<Navigate to="/fluxo" replace />} />
               <Route path="/listas" element={<ListasPage />} />
               <Route path="/catalogo" element={<CatalogoPage />} />
             </Route>

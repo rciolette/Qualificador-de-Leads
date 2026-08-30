@@ -100,7 +100,7 @@ export function FluxoPage() {
   const [analises, setAnalises] = useState<Analise[]>([])
   const [camposArquivo, setCamposArquivo] = useState<CampoCanonico[]>([])
 
-  const importacoes = useQuery({ queryKey: ['importacoes'], queryFn: () => listarImportacoes(5) })
+  const importacoes = useQuery({ queryKey: ['importacoes'], queryFn: () => listarImportacoes(20) })
 
   const analisar = useMutation({
     mutationFn: (arquivos: File[]) => analisarArquivos(arquivos, {
