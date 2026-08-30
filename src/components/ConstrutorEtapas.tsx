@@ -216,10 +216,13 @@ function CartaoEtapa({
   }
 
   return (
-    <Card className={cn(
-      !etapa.ativa && 'opacity-50',
-      incompleta && 'border-dashed border-warning/60',
-    )}>
+    <Card
+      id={`etapa-${indice}`}
+      className={cn(
+        !etapa.ativa && 'opacity-50',
+        incompleta && 'border-dashed border-warning/60',
+      )}
+    >
       <CardContent className="space-y-3 pt-4">
         {incompleta && (
           <p role="status" className="flex items-start gap-2 rounded-lg bg-warning/10 px-3 py-2 text-micro text-warning">
