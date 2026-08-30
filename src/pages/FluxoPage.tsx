@@ -30,6 +30,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
+import { useDebounceComEstado } from '@/lib/useDebounce'
 import { cn } from '@/lib/utils'
 
 const TIPOS: { valor: TipoIniciativa; rotulo: string }[] = [
@@ -166,9 +167,21 @@ export function FluxoPage() {
     pesos, times, anti_fadiga_dias: antiFadiga, excluir_perdido_dias: perdidoDias,
   }), [pesos, times, antiFadiga, perdidoDias])
 
+  /**
+   * O funil recalcula com atraso, de propósito.
+   *
+   * Cada tecla num campo de valor era uma chamada à RPC: arrastar um mínimo de
+   * 0 a 10 enfileirava dez recálculos de 384 ms, e nada garantia que o último a
+   * chegar fosse o da última pergunta. `obsoleto` é o que separa "o número está
+   * sendo recalculado" de "o número na tela responde a outra pergunta" — e é
+   * ele que trava o botão de avançar.
+   */
+  const [etapasQ, etapasMudando] = useDebounceComEstado(etapas)
+  const [configQ, configMudando] = useDebounceComEstado(config)
+
   const calcular = useQuery({
-    queryKey: ['funil', etapas, config],
-    queryFn: () => calcularFunil(etapas, config),
+    queryKey: ['funil', etapasQ, configQ],
+    queryFn: () => calcularFunil(etapasQ, configQ),
     enabled: passo >= 2,
     // segura o funil anterior enquanto recalcula, em vez de piscar para vazio.
     // Era um `useState` espelhado por `useEffect`, e ele tinha um efeito
@@ -180,6 +193,8 @@ export function FluxoPage() {
 
   const funil: LinhaFunil[] = calcular.data ?? []
   const funilFalhou = calcular.isError && !calcular.data
+  // o número na tela ainda não responde ao que está montado
+  const obsoleto = etapasMudando || configMudando || calcular.isFetching
   const final = funil.find((l) => l.ordem === 999)?.saem_aqui ?? 0
   const universo = funil[0] ? funil[0].saem_aqui + funil[0].restam : 0
   const semPeso = Object.values(pesos).every((v) => !v)
@@ -524,7 +539,7 @@ export function FluxoPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center justify-between text-heading">
                   Funil
-                  {calcular.isFetching && (
+                  {obsoleto && (
                     <span className="text-micro font-normal text-muted-foreground">recalculando…</span>
                   )}
                 </CardTitle>
@@ -545,8 +560,8 @@ export function FluxoPage() {
                     </Button>
                   </div>
                 ) : (
-                  <FunilExclusao funil={funil} carregando={calcular.isFetching}
-                    etapas={etapas} iniciativa={config} />
+                  <FunilExclusao funil={funil} carregando={obsoleto}
+                    etapas={etapasQ} iniciativa={configQ} />
                 )}
 
                 {!funilFalhou && universo > 0 && final === 0 && etapas.length > 0 && (
@@ -566,7 +581,7 @@ export function FluxoPage() {
                   <Button variant="outline" className="gap-2" onClick={() => setPasso(1)}>
                     <ArrowLeft className="h-4 w-4" /> Base
                   </Button>
-                  <Button className="flex-1 gap-2" disabled={final === 0}
+                  <Button className="flex-1 gap-2" disabled={final === 0 || obsoleto}
                     onClick={() => setPasso(3)}>
                     Ver os {formatarNumero(final)} <ArrowRight className="h-4 w-4" />
                   </Button>
