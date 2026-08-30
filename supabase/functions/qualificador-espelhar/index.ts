@@ -39,16 +39,30 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return responder({ erro: 'Use POST' }, 405)
 
+  // Autenticação: sessão de usuário OU o segredo do cron.
+  //
+  // O cron não tem sessão — ele é o próprio servidor. A alternativa seria criar
+  // um usuário de serviço em `user_profiles`, mas aí ele existiria também para o
+  // app, e uma credencial de robô que serve de login é exatamente o tipo de
+  // porta que ninguém lembra de fechar. O segredo vive só no vault: quem
+  // consegue lê-lo já tem acesso ao banco.
+  const segredoCron = req.headers.get('x-cron-secret')
   const autorizacao = req.headers.get('Authorization')
-  if (!autorizacao) return responder({ erro: 'Cabeçalho Authorization ausente' }, 401)
+  if (!segredoCron && !autorizacao) {
+    return responder({ erro: 'Cabeçalho Authorization ausente' }, 401)
+  }
 
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_ANON_KEY')!,
-    { global: { headers: { Authorization: autorizacao } } },
-  )
-  const { data: { user }, error: erroAuth } = await supabase.auth.getUser()
-  if (erroAuth || !user) return responder({ erro: 'Sessão inválida' }, 401)
+  let user: { id: string } | null = null
+  if (!segredoCron) {
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: autorizacao! } } },
+    )
+    const { data, error: erroAuth } = await supabase.auth.getUser()
+    if (erroAuth || !data.user) return responder({ erro: 'Sessão inválida' }, 401)
+    user = data.user
+  }
 
   let corpo: {
     fonte?: string
@@ -78,13 +92,38 @@ Deno.serve(async (req) => {
   let paginaAtual = Math.max(corpo.pagina_inicial ?? 1, 1)
 
   try {
-    const [perfil] = await sql`
-      select papel::text from qualificador.user_profiles where user_id = ${user.id}::uuid`
-    if (!perfil || !['operador', 'gestao'].includes(perfil.papel)) {
-      return responder(
-        { erro: 'Espelhar exige papel operador ou gestao', papel: perfil?.papel ?? null },
-        403,
-      )
+    if (segredoCron) {
+      // o segredo só é conferido aqui, onde já existe conexão com o banco.
+      // Comparação de tamanho fixo (64 hex), gerado por gen_random_bytes.
+      const [s] = await sql`
+        select decrypted_secret from vault.decrypted_secrets
+         where name = 'qualificador_cron_secret'`
+      if (!s?.decrypted_secret || s.decrypted_secret !== segredoCron) {
+        return responder({ erro: 'Segredo do cron inválido' }, 401)
+      }
+    } else {
+      // papel mínimo: operador
+      const [perfil] = await sql`
+        select papel::text from qualificador.user_profiles where user_id = ${user!.id}::uuid`
+      if (!perfil || !['operador', 'gestao'].includes(perfil.papel)) {
+        return responder(
+          { erro: 'Espelhar exige papel operador ou gestao', papel: perfil?.papel ?? null },
+          403,
+        )
+      }
+    }
+
+    // O cron não encadeia respostas: `pg_net` dispara e esquece. Então, quando a
+    // chamada vem do cron sem página explícita, o ponto de retomada vem do
+    // banco. Sem isto, cada disparo do cron recomeçaria da página 1 — e como a
+    // primeira invocação APAGA o espelho, a fonte nunca terminaria de espelhar.
+    if (segredoCron && corpo.pagina_inicial === undefined) {
+      const [r] = await sql`select * from qualificador.espelho_retomar(${slug})`
+      if (r?.pagina > 1 && r?.execucao_id) {
+        paginaAtual = Number(r.pagina)
+        execucaoId = Number(r.execucao_id)
+        corpo.pagina_inicial = paginaAtual
+      }
     }
 
     const [integracao] = await sql`
@@ -163,6 +202,10 @@ Deno.serve(async (req) => {
           ${execucaoId}, 'ok', ${linhasEspelho}, ${Date.now() - inicio},
           ${resumo ? `casou_por: ${resumo}` : null})`
 
+        if (segredoCron) {
+          await sql`select qualificador.espelho_marcar(${slug}, 1, null, true)`
+        }
+
         return responder({
           fonte: slug,
           status: 'concluido',
@@ -185,8 +228,13 @@ Deno.serve(async (req) => {
       // segundo, o pool de workers saturou e o `qualificador-sync` do HubSpot,
       // que não tinha nada a ver com isso, morreu com HTTP 546 (WORKER_LIMIT).
       //
-      // Quem retoma é o front, num caminho só, mostrando a página na tela.
+      // Quem retoma é UM chamador só, de fora: o front, mostrando a página na
+      // tela, ou o cron, lendo `espelho_progresso`. Nunca a própria função.
       if (Date.now() - inicio > ORCAMENTO_MS || paginasNestaInvocacao >= MAX_PAGINAS_POR_INVOCACAO) {
+        if (segredoCron) {
+          await sql`select qualificador.espelho_marcar(
+            ${slug}, ${pagina}, ${execucaoId}, false)`
+        }
         return responder({
           fonte: slug,
           status: 'continua',
@@ -209,6 +257,12 @@ Deno.serve(async (req) => {
       } else {
         await sql`select qualificador.registrar_execucao(
           ${slug}, 'espelhar', 'erro', null, ${Date.now() - inicio}, ${mensagem})`
+      }
+      if (segredoCron) {
+        // deixa o progresso onde parou, mas com o relógio parado: se a próxima
+        // rodada vier dentro do teto, retoma; se não, recomeça limpo
+        await sql`select qualificador.espelho_marcar(
+          ${slug}, ${paginaAtual}, ${execucaoId}, false)`
       }
     } catch { /* o log não pode mascarar o erro original */ }
     return responder({ erro: mensagem, fonte: slug }, 500)

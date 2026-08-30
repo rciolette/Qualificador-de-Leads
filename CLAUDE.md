@@ -241,6 +241,43 @@ aí sobra uma iniciativa sem lista. Partindo da lista, ela ficaria invisível �
 `/iniciativas` e `/iniciativas/nova` continuam de pé como redirect.
 `listarIniciativas()` foi removida de `iniciativas.ts`: virou código morto.
 
+### A rotina noturna (30/08) — job 49, `qualificador-madrugada`
+
+`*/2 4-6 * * *` UTC = **01:00 às 03:59 de Brasília**, a cada 2 minutos.
+Cada disparo chama `qualificador.cron_madrugada()`, que decide UM passo:
+
+1. se há espelhamento em andamento (< 20 min), não faz nada;
+2. senão, a fonte espelhada que ainda não fechou hoje — MemberKit → Sellflux →
+   MemberClass, da menor para a maior;
+3. quando as três fecharam, um lote de 100 do HubSpot, até não sobrar ninguém
+   com `sync_em` mais velho que 20 h;
+4. no fim, `garantir_pessoa_dados()` + `medir_cobertura()`.
+
+**Por que um orquestrador e não quatro jobs de horário fixo:**
+`registrar_execucao` recusa espelhamento concorrente — "duas fontes ao mesmo
+tempo esgotam os workers do projeto e derrubam até o sync do HubSpot". Horários
+fixos funcionam até o dia em que a MemberClass demorar 40 min em vez de 22.
+
+**Autenticação:** as Edge Functions aceitam `x-cron-secret`, conferido contra
+`vault.decrypted_secrets` (`qualificador_cron_secret`). Não existe usuário de
+serviço em `user_profiles` — uma credencial de robô que também serve de login no
+app é porta que ninguém lembra de fechar. O `Authorization: Bearer <anon>` vai
+junto só para passar pelo gateway (`verify_jwt: true`); ele não autoriza nada.
+
+**`espelho_progresso` fecha a dívida 4:** o espelhamento retoma de onde parou
+sem depender da aba aberta. `pg_net` dispara e esquece, então o encadeamento
+vive no banco, não na resposta. A função continua **não** se re-invocando.
+
+**O agendamento cria objeto em `cron.job`, fora do schema `qualificador`** — é a
+única exceção à regra da seção 2, e está registrada aqui de propósito. O comando
+`cron.schedule` está comentado na migration 85: aplicar o repo num projeto de
+teste não pode criar um cron que chama a URL de produção.
+
+Testado de ponta a ponta em 30/08: MemberKit espelhou pelo cron (1.449 registros,
+casou 98 por e-mail) e o HubSpot sincronizou (20/20). **E o `caixa` chegou** —
+20 de 20 com a chave, 14 preenchidos. O re-sync que estava pendente desde a
+migration 59 agora acontece sozinho toda noite.
+
 ### Cobertura dos campos — novo
 
 `qualificador.cobertura_campo` (tabela) + `medir_cobertura()` respondem

@@ -43,16 +43,30 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return responder({ erro: 'Use POST' }, 405)
 
+  // Autenticação: sessão de usuário OU o segredo do cron.
+  //
+  // O cron não tem sessão — ele é o próprio servidor. A alternativa seria criar
+  // um usuário de serviço em `user_profiles`, mas aí ele existiria também para o
+  // app, e uma credencial de robô que serve de login é exatamente o tipo de
+  // porta que ninguém lembra de fechar. O segredo vive só no vault: quem
+  // consegue lê-lo já tem acesso ao banco.
+  const segredoCron = req.headers.get('x-cron-secret')
   const autorizacao = req.headers.get('Authorization')
-  if (!autorizacao) return responder({ erro: 'Cabeçalho Authorization ausente' }, 401)
+  if (!segredoCron && !autorizacao) {
+    return responder({ erro: 'Cabeçalho Authorization ausente' }, 401)
+  }
 
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_ANON_KEY')!,
-    { global: { headers: { Authorization: autorizacao } } },
-  )
-  const { data: { user }, error: erroAuth } = await supabase.auth.getUser()
-  if (erroAuth || !user) return responder({ erro: 'Sessão inválida' }, 401)
+  let user: { id: string } | null = null
+  if (!segredoCron) {
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: autorizacao! } } },
+    )
+    const { data, error: erroAuth } = await supabase.auth.getUser()
+    if (erroAuth || !data.user) return responder({ erro: 'Sessão inválida' }, 401)
+    user = data.user
+  }
 
   let corpo: {
     fonte?: string; limite?: number; max_idade_horas?: number; emails?: string[]
@@ -76,14 +90,25 @@ Deno.serve(async (req) => {
   const inicio = Date.now()
 
   try {
-    // papel mínimo: operador
-    const [perfil] = await sql`
-      select papel::text from qualificador.user_profiles where user_id = ${user.id}::uuid`
-    if (!perfil || !['operador', 'gestao'].includes(perfil.papel)) {
-      return responder(
-        { erro: 'Sincronizar exige papel operador ou gestao', papel: perfil?.papel ?? null },
-        403,
-      )
+    if (segredoCron) {
+      // o segredo só é conferido aqui, onde já existe conexão com o banco.
+      // Comparação de tamanho fixo (64 hex), gerado por gen_random_bytes.
+      const [s] = await sql`
+        select decrypted_secret from vault.decrypted_secrets
+         where name = 'qualificador_cron_secret'`
+      if (!s?.decrypted_secret || s.decrypted_secret !== segredoCron) {
+        return responder({ erro: 'Segredo do cron inválido' }, 401)
+      }
+    } else {
+      // papel mínimo: operador
+      const [perfil] = await sql`
+        select papel::text from qualificador.user_profiles where user_id = ${user!.id}::uuid`
+      if (!perfil || !['operador', 'gestao'].includes(perfil.papel)) {
+        return responder(
+          { erro: 'Sincronizar exige papel operador ou gestao', papel: perfil?.papel ?? null },
+          403,
+        )
+      }
     }
 
     const [integracao] = await sql`
