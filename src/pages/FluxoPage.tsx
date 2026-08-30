@@ -1,19 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowLeft, ArrowRight, BookmarkPlus, Check, Database, Download, Filter,
-  AlertTriangle, ListChecks, Sparkles, Undo2, Wand2,
+  AlertTriangle, ArrowLeft, ArrowRight, BookmarkPlus, Check, Database, Download,
+  Filter, ListChecks, Sparkles, Undo2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { MapeamentoArquivo } from '@/components/MapeamentoArquivo'
 import { ConstrutorEtapas } from '@/components/ConstrutorEtapas'
+import { PainelDeModelos } from '@/components/PainelDeModelos'
 import { FunilExclusao } from '@/components/FunilExclusao'
 import { formatarNumero, listarImportacoes, mostrar } from '@/lib/dados'
 import { analisarArquivos, type Analise, type CampoCanonico, type Progresso } from '@/lib/importar'
 import { ZonaDeUpload } from '@/components/ZonaDeUpload'
 import {
-  apagarModelo, calcularFunil, colunasDe, gerarLista, listarModelos, listarPerfis,
-  listarRecortes, pessoasDaEtapa, resolverColunas, salvarIniciativa, salvarModelo,
+  calcularFunil, colunasDe, gerarLista, listarPerfis,
+  pessoasDaEtapa, resolverColunas, salvarIniciativa, salvarModelo,
   EIXOS, type Etapa, type Iniciativa, type LinhaFunil, type ModeloFluxo,
 } from '@/lib/iniciativas'
 import { baixarLista } from '@/lib/exportar'
@@ -160,8 +161,6 @@ export function FluxoPage() {
   const [pesos, setPesos] = useState<Record<string, number>>(inicial.pesos ?? {})
 
   const perfis = useQuery({ queryKey: ['perfis'], queryFn: listarPerfis })
-  const recortes = useQuery({ queryKey: ['recortes'], queryFn: listarRecortes })
-  const modelos = useQuery({ queryKey: ['modelos'], queryFn: listarModelos })
 
   const config = useMemo(() => ({
     pesos, times, anti_fadiga_dias: antiFadiga, excluir_perdido_dias: perdidoDias,
@@ -259,6 +258,36 @@ export function FluxoPage() {
     onError: (e: Error) => toast.error('Não foi possível salvar', { description: e.message }),
   })
 
+  /**
+   * Um modelo ou recorte escolhido vira ETAPAS, não um estado paralelo.
+   *
+   * Substitui o funil inteiro de propósito: "começar de um modelo" é começar,
+   * não misturar. E passa por `mudarEtapas`, então o Desfazer alcança —
+   * carregar o modelo errado com quatro cartões montados não custa o trabalho.
+   */
+  function aplicarModelo(
+    novas: Etapa[],
+    extras?: {
+      pesos?: Record<string, number>
+      perfil?: string | null
+      /** modelo salvo: traz nome, times e as janelas junto com as etapas */
+      modelo?: ModeloFluxo
+    },
+  ) {
+    mudarEtapas(novas)
+    if (extras?.pesos) setPesos(extras.pesos)
+    else if (extras?.perfil) aplicarPerfil(extras.perfil)
+
+    const m = extras?.modelo
+    if (m) {
+      setNome(m.nome)
+      const c = (m.config ?? {}) as Record<string, unknown>
+      if (Array.isArray(c.times)) setTimes(c.times as TimeComercial[])
+      if (typeof c.anti_fadiga_dias === 'number') setAntiFadiga(c.anti_fadiga_dias)
+      if (typeof c.excluir_perdido_dias === 'number') setPerdidoDias(c.excluir_perdido_dias)
+    }
+  }
+
   function aplicarPerfil(slug: string) {
     const p = perfis.data?.find((x) => x.slug === slug)
     if (!p) return
@@ -266,17 +295,6 @@ export function FluxoPage() {
     toast.info(`Pesos de "${p.nome}"`, { description: p.observacao ?? undefined })
   }
 
-  function carregarModelo(m: ModeloFluxo) {
-    setNome(m.nome)
-    setEtapas(m.etapas ?? [])
-    setPesos(m.pesos ?? {})
-    const c = (m.config ?? {}) as Record<string, unknown>
-    if (Array.isArray(c.times)) setTimes(c.times as TimeComercial[])
-    if (typeof c.anti_fadiga_dias === 'number') setAntiFadiga(c.anti_fadiga_dias)
-    if (typeof c.excluir_perdido_dias === 'number') setPerdidoDias(c.excluir_perdido_dias)
-    setPasso(2)
-    toast.info(`Modelo "${m.nome}" carregado`)
-  }
 
   return (
     <>
@@ -358,11 +376,18 @@ export function FluxoPage() {
       {passo === 2 && (
         <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
           <div className="space-y-6">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-heading">O que você está montando</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-4 sm:grid-cols-2">
+            {/* Recolhido por padrão: nome, tipo, times e as duas janelas só
+                importam na hora de gerar, e ocupavam o topo da tela durante todo
+                o tempo em que a pessoa está montando o funil. */}
+            <details className="rounded-xl border border-border bg-card">
+              <summary className="cursor-pointer px-6 py-3 text-heading">
+                Configuração do disparo
+                <span className="ml-2 text-label font-normal text-muted-foreground">
+                  {nome || 'sem nome'} · {TIPOS.find((t) => t.valor === tipo)?.rotulo}
+                  {times.length > 0 && ` · ${times.join(' → ')}`}
+                </span>
+              </summary>
+              <div className="grid gap-4 border-t border-border px-6 py-4 sm:grid-cols-2">
                 <div className="space-y-1 sm:col-span-2">
                   <Label htmlFor="nome">Nome</Label>
                   <Input id="nome" value={nome} onChange={(e) => setNome(e.target.value)}
@@ -404,84 +429,31 @@ export function FluxoPage() {
                   <Label htmlFor="pd">Excluir perdido há (dias)</Label>
                   <Input id="pd" type="number" min={0} value={perdidoDias}
                     onChange={(e) => setPerdidoDias(Number(e.target.value))} />
+                  <p className="text-micro text-muted-foreground">
+                    Hoje esta janela sozinha tira 1.474 pessoas — é o maior dos
+                    bloqueios. 0 desliga.
+                  </p>
                 </div>
-              </CardContent>
-            </Card>
-
-            {(modelos.data ?? []).length > 0 && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-heading">
-                    <BookmarkPlus className="h-4 w-4" /> Meus modelos
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="flex flex-wrap gap-2">
-                  {(modelos.data ?? []).map((m) => (
-                    <span key={m.id}
-                      className="flex items-center gap-1 rounded-lg border border-border pl-3 pr-1">
-                      <button onClick={() => carregarModelo(m)}
-                        className="py-1.5 text-label hover:text-primary">
-                        {m.nome}
-                        <span className="ml-1.5 text-micro text-muted-foreground">
-                          {(m.etapas ?? []).length} etapa(s)
-                        </span>
-                      </button>
-                      <button
-                        onClick={async () => {
-                          await apagarModelo(m.id)
-                          qc.invalidateQueries({ queryKey: ['modelos'] })
-                          toast.success(`Modelo "${m.nome}" apagado`)
-                        }}
-                        className="p-1 text-muted-foreground hover:text-destructive"
-                        aria-label={`Apagar ${m.nome}`}>
-                        <Wand2 className="h-3.5 w-3.5" />
-                      </button>
-                    </span>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
-
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-heading">
-                  <Wand2 className="h-4 w-4" /> Recortes prontos
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="flex flex-wrap gap-2">
-                {(recortes.data ?? []).map((r) => (
-                  <button key={r.slug}
-                    onClick={() => {
-                      if (r.perfil_peso) aplicarPerfil(r.perfil_peso)
-                      toast.info(r.nome, {
-                        description: r.diagnostico
-                          ? `${r.criterio} — DIAGNÓSTICO: ${r.destino}` : r.criterio,
-                        duration: 10000,
-                      })
-                    }}
-                    className={cn('rounded-lg border px-3 py-1.5 text-label transition-colors hover:bg-muted',
-                      r.diagnostico ? 'border-warning/50 text-warning' : 'border-border')}>
-                    {r.nome}
-                    {r.diagnostico && <span className="ml-1.5 text-micro">· não dispara</span>}
-                  </button>
-                ))}
-              </CardContent>
-            </Card>
+              </div>
+            </details>
 
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <CardTitle className="text-heading">O funil, etapa a etapa</CardTitle>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="gap-1.5"
-                    onClick={desfazer}
-                    disabled={historico.length === 0}
-                  >
-                    <Undo2 className="h-3.5 w-3.5" />
-                    Desfazer
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <PainelDeModelos aoAplicar={aplicarModelo} />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={desfazer}
+                      disabled={historico.length === 0}
+                    >
+                      <Undo2 className="h-3.5 w-3.5" />
+                      Desfazer
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
@@ -489,49 +461,6 @@ export function FluxoPage() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <CardTitle className="text-heading">Como ordenar quem sobrou</CardTitle>
-                  <Select onValueChange={aplicarPerfil}>
-                    <SelectTrigger className="w-56">
-                      <SelectValue placeholder="usar um perfil de peso" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(perfis.data ?? []).map((p) => (
-                        <SelectItem key={p.slug} value={p.slug}>{p.nome}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {EIXOS.map((eixo) => (
-                  <div key={eixo.chave} className="grid grid-cols-[1fr_auto] items-center gap-3">
-                    <div>
-                      <div className="flex items-baseline gap-2">
-                        <span className={cn('text-label',
-                          !pesos[eixo.chave] && 'text-muted-foreground line-through')}>
-                          {eixo.rotulo}
-                        </span>
-                        <span className="text-micro text-muted-foreground">{eixo.ajuda}</span>
-                      </div>
-                      <input type="range" min={0} max={10} value={pesos[eixo.chave] ?? 0}
-                        onChange={(e) => setPesos({ ...pesos, [eixo.chave]: Number(e.target.value) })}
-                        aria-label={`Peso de ${eixo.rotulo}`}
-                        className="mt-1 w-full accent-primary" />
-                    </div>
-                    <span className={cn('w-6 text-right text-label tabular-nums',
-                      !pesos[eixo.chave] && 'text-muted-foreground')}>
-                      {pesos[eixo.chave] ?? 0}
-                    </span>
-                  </div>
-                ))}
-                <p className="text-micro text-muted-foreground">
-                  Peso 0 desliga o eixo — ele sai da conta em vez de rebaixar todo mundo.
-                </p>
-              </CardContent>
-            </Card>
           </div>
 
           <div className="lg:sticky lg:top-20 lg:self-start">
@@ -601,6 +530,57 @@ export function FluxoPage() {
 
       {passo === 3 && (
         <div className="space-y-6">
+          {/* Os pesos vieram da Etapa 2 para cá: ordenar só faz sentido vendo
+              quem sobrou. Na Etapa 2 eles competiam com os filtros pela atenção
+              e não mudavam nenhum número da tela. */}
+          <div className="grid gap-6 lg:grid-cols-[340px_1fr] lg:items-start">
+            <div className="lg:sticky lg:top-20">
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <CardTitle className="text-heading">Como ordenar estes</CardTitle>
+                  <Select onValueChange={aplicarPerfil}>
+                    <SelectTrigger className="w-56">
+                      <SelectValue placeholder="usar um perfil de peso" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(perfis.data ?? []).map((p) => (
+                        <SelectItem key={p.slug} value={p.slug}>{p.nome}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {EIXOS.map((eixo) => (
+                  <div key={eixo.chave} className="grid grid-cols-[1fr_auto] items-center gap-3">
+                    <div>
+                      <div className="flex items-baseline gap-2">
+                        <span className={cn('text-label',
+                          !pesos[eixo.chave] && 'text-muted-foreground line-through')}>
+                          {eixo.rotulo}
+                        </span>
+                        <span className="text-micro text-muted-foreground">{eixo.ajuda}</span>
+                      </div>
+                      <input type="range" min={0} max={10} value={pesos[eixo.chave] ?? 0}
+                        onChange={(e) => setPesos({ ...pesos, [eixo.chave]: Number(e.target.value) })}
+                        aria-label={`Peso de ${eixo.rotulo}`}
+                        className="mt-1 w-full accent-primary" />
+                    </div>
+                    <span className={cn('w-6 text-right text-label tabular-nums',
+                      !pesos[eixo.chave] && 'text-muted-foreground')}>
+                      {pesos[eixo.chave] ?? 0}
+                    </span>
+                  </div>
+                ))}
+                <p className="text-micro text-muted-foreground">
+                  Peso 0 desliga o eixo — ele sai da conta em vez de rebaixar todo mundo.
+                  A tabela ao lado reordena junto.
+                </p>
+              </CardContent>
+            </Card>
+            </div>
+            <div className="space-y-6">
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex flex-wrap items-center justify-between gap-3 text-heading">
@@ -687,6 +667,8 @@ export function FluxoPage() {
               )}
             </CardContent>
           </Card>
+            </div>
+          </div>
         </div>
       )}
     </>
