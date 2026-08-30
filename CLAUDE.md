@@ -166,6 +166,58 @@ acontece em SQL (`qualificador.reconciliar`). Só o HubSpot fica em
 
 ## 4. Trabalho em aberto (pegue daqui)
 
+### Etapa 2 — roteiro de 30/08: os quatro itens estão fechados
+
+Verificação do Raphael direto no banco e no app, seguida de correção. Medido
+depois: base 4.430 → **2.443** após os bloqueios duros.
+
+| # | Item | Situação |
+|---|---|---|
+| 1 | Painel do funil mostrava 0 em tudo | **fechado** — era erro engolido, não zero |
+| 2 | Duas chaves para o mesmo campo (id × caminho) | **fechado** — migration 67 |
+| 2b | Campo inválido ≠ pessoa sem o dado | **fechado** — `_ignorar` + `ignorada` no funil |
+| 3 | Terceiro estado `sem_dado` | **fechado** — `excluir`/`manter`/`apenas` |
+| 4 | "Os filtros cortam demais" | **investigado** — ver abaixo |
+
+Números medidos, todos batendo com o esperado do roteiro:
+
+| caso | restam |
+|---|---|
+| sem etapa nenhuma | 2.443 |
+| `mc.tem_conta` pelo **id** do catálogo | 2.364 *(era 0)* |
+| `tem_memberclass` pelo caminho (legado) | 2.364 |
+| etapa incompleta `{"campo":"","operador":""}` | 2.443 *(era 0)* |
+| campo que não existe no catálogo | 2.443 |
+| `mc.tem_conta` com `sem_dado: apenas` | **79** |
+
+2.364 + 79 = 2.443: os dois lados são complementares dentro do universo
+pós-bloqueio, como tinham que ser.
+
+**Sobre o item 4 — os filtros não estavam cortando demais.** Duas conclusões:
+
+1. A causa real era o item 2. Qualquer condição escrita com o id do catálogo
+   zerava a lista, e a tela grava o id.
+2. **`excluir_perdido_dias` NÃO está fixo em 15.** Medido pela RPC:
+   0 → 3.917 · 7 → 2.602 · 15 → 2.443 · 30 → 2.223. O valor do formulário chega
+   inteiro (`config()` em `iniciativas.ts` → `p_config`). O que faltava era
+   visibilidade: o painel agora traz um **subtotal dos bloqueios duros** antes
+   das etapas do usuário, para a queda de 4.430 → 2.443 não parecer culpa dos
+   filtros que a pessoa montou.
+
+### Cobertura dos campos — novo
+
+`qualificador.cobertura_campo` (tabela) + `medir_cobertura()` respondem
+"quantos da base têm esse dado?". O seletor mostra o % por campo e a etapa avisa
+antes de filtrar. **Custa ~7 s e o teto do PostgREST é 8 s** — por isso é medida
+sob demanda e gravada, nunca calculada por render. Rodar depois de importar,
+sincronizar ou reconciliar.
+
+Cobertura medida em 30/08 (4.430 pessoas): Assiny e identidade 100% ·
+MemberClass 97,9% · Sellflux 95,8% · HubSpot derivados 78% · negócio 38–64% ·
+**MemberKit 2,3%** · `hsc.caixa` **0%** (o re-sync ainda não rodou) ·
+evento 0% (não há dado de evento na base).
+
+
 0. ~~Publicar o que está no repo mas não em produção.~~ **Fechado em 27/08 22h.**
 1. ~~Rodar as três fontes espelhadas de verdade.~~ **Fechado**: MemberKit 1.439
    (casou 56), MemberClass 11.197 (casa 324), Sellflux 19.949 (casa 1.099).
@@ -236,6 +288,41 @@ removeu. O que sobra de verdade para decidir por etapa é só uma coisa: a ausê
 do dado exclui, ou não.
 
 ## 5. Armadilhas já pagas — não repetir
+
+- **DUAS CHAVES PARA O MESMO CAMPO, e a errada cortava 100% em silêncio.**
+  `campo_filtravel` expõe `id` (`mc.tem_conta`) e `caminho` (`tem_memberclass`).
+  A tela grava o **id** em `colunas[]`, mas `condicoes[].campo` esperava o
+  **caminho**. Uma condição escrita com o id não achava dado nenhum, virava
+  "sem dado" para todo mundo, e com `sem_dado: excluir` zerava a lista sem erro.
+  Medido: **0 pessoas com o id, 2.364 com o caminho**, mesma condição.
+  Resolvido na migration 67: `resolver_condicao` aceita as duas e traduz o id
+  para (fonte, caminho), **uma vez por etapa, nunca por pessoa** — ela consulta
+  `campo_filtravel`, e fazer isso dentro de `condicao_avalia` seria uma leitura
+  de tabela por pessoa × condição.
+- **Campo inválido não é pessoa sem o dado.** Os dois davam "indeterminado", e
+  `sem_dado: excluir` cortava nos dois casos. Um é erro de montagem da etapa, o
+  outro é um fato sobre a pessoa. Hoje campo vazio/desconhecido ou operador
+  ausente marca a condição com `_ignorar`, e **etapa sem nenhuma condição
+  julgável não corta ninguém** — nem quando o modo é `apenas`, porque inverter
+  uma etapa que não sabe julgar nada devolveria a base inteira como resposta.
+- **`operador_bate` termina com `else return true`.** Operador que ela não
+  conhece faz a condição valer para todo mundo: a etapa deixa de filtrar e
+  ninguém percebe. Descobri escrevendo `maior_ou_igual` no lugar de
+  `maior_igual` — a etapa "3+ aulas" devolveu 4.339 em vez de 2.280. Hoje
+  `condicao_avalia` valida o operador contra a lista e devolve `ignorar`.
+- **Espelhar uma query do React Query num `useState` engole o erro.** O painel
+  do funil fazia `useEffect(() => { if (data) setFunil(data) })`: em erro o
+  espelho ficava `[]`, e a tela mostrava **"Universo 0 · LISTA FINAL 0"** — um
+  número inventado, indistinguível de um funil que de fato não sobrou ninguém.
+  Use `placeholderData: (anterior) => anterior` para não piscar, e **trate
+  `isError` explicitamente**: erro tem que aparecer como erro.
+- **`create temp table` exige função VOLATILE.** Marcada `stable`, ela falha com
+  `0A000` só na primeira chamada — a função existe e nunca roda.
+- **`qualificador.has_min_papel` sempre aparece no `get_advisors`**
+  (`authenticated_security_definer_function_executable`) e **é para ficar
+  assim**. Ela é DEFINER de propósito e todas as policies do schema a chamam:
+  revogá-la de `authenticated` quebraria a RLS inteira, que é a mesma armadilha
+  da migration 41. É o único alerta aceito citando `qualificador`.
 
 - **`transaction_id` não é único.** Uma transação tem N itens (ENTRY + bumps +
   upsell/downsell). Ficar com um item por transação perde ~38% do valor.
@@ -425,5 +512,6 @@ Nomear sempre `qualificador_AAAAMMDD_NN_descricao`, com `NN` conferido em
 - `docs/tarefa-2-passos-1-2-condicao-ternaria.md` — passos 1 e 2 do desenho, entregues
 - `docs/fluxo-guiado.md` — o fluxo vira o caminho principal (passos 3 e 5)
 - `docs/validacao-para-producao.md` — a varredura do front, 4 defeitos e 11 aceites
+- `docs/etapa2-quatro-correcoes.md` — o roteiro de 30/08: as 4 correções e os números
 - Projeto Claude "Qualificador de Leads" → `claude/mapa-apis-v1.md` (as 4 APIs) e
   `claude/estado-do-projeto.md` (espelho desta seção 3, para quem não abre o repo)

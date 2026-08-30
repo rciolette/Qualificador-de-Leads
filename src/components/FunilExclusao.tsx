@@ -33,6 +33,13 @@ export function FunilExclusao({
   const universo = funil[0] ? funil[0].saem_aqui + funil[0].restam : 0
   const final = funil.find((l) => l.ordem === 999)
 
+  // Os bloqueios duros hoje somam ~1.987 de 4.430 — quase metade da base, e é a
+  // conta que assusta quem olha só o total. Somados numa linha, a queda deixa de
+  // parecer culpa dos filtros que a pessoa montou.
+  const duros = funil.filter((l) => l.bloqueio_duro)
+  const cortadosDuros = duros.reduce((t, l) => t + l.saem_aqui, 0)
+  const ultimoDuro = duros[duros.length - 1]
+
   return (
     <>
       <div className={cn('space-y-0.5', carregando && 'opacity-60 transition-opacity')}>
@@ -42,30 +49,51 @@ export function FunilExclusao({
         </div>
 
         {funil.filter((l) => l.ordem !== 999).map((linha) => (
-          <button
-            key={linha.ordem}
-            onClick={() => linha.saem_aqui > 0 && setAberto(linha)}
-            disabled={linha.saem_aqui === 0}
-            className={cn(
-              'flex w-full items-baseline justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-label transition-colors',
-              linha.saem_aqui > 0
-                ? 'hover:bg-muted cursor-pointer'
-                : 'cursor-default text-muted-foreground/60',
-            )}
-          >
-            <span className="flex min-w-0 items-center gap-1.5">
-              {linha.bloqueio_duro && (
-                <Lock className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="bloqueio duro" />
+          <div key={linha.ordem}>
+            <button
+              onClick={() => linha.saem_aqui > 0 && setAberto(linha)}
+              disabled={linha.saem_aqui === 0}
+              className={cn(
+                'flex w-full items-baseline justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-label transition-colors',
+                linha.saem_aqui > 0
+                  ? 'hover:bg-muted cursor-pointer'
+                  : 'cursor-default text-muted-foreground/60',
+                // etapa que o motor não consegue julgar fica visivelmente fora
+                // do cálculo, em vez de parecer uma etapa que cortou zero
+                linha.ignorada && 'rounded-lg border border-dashed border-warning/60 opacity-70',
               )}
-              <span className="truncate">− {linha.rotulo}</span>
-            </span>
-            <span className="shrink-0 tabular-nums">
-              {linha.saem_aqui > 0
-                ? <span className="text-destructive">{formatarNumero(linha.saem_aqui)}</span>
-                : <span>0</span>}
-              <span className="ml-3 text-muted-foreground">{formatarNumero(linha.restam)}</span>
-            </span>
-          </button>
+            >
+              <span className="flex min-w-0 items-center gap-1.5">
+                {linha.bloqueio_duro && (
+                  <Lock className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="bloqueio duro" />
+                )}
+                <span className="truncate">− {linha.rotulo}</span>
+              </span>
+              <span className="shrink-0 tabular-nums">
+                {linha.saem_aqui > 0
+                  ? <span className="text-destructive">{formatarNumero(linha.saem_aqui)}</span>
+                  : <span>0</span>}
+                <span className="ml-3 text-muted-foreground">{formatarNumero(linha.restam)}</span>
+              </span>
+            </button>
+
+            {linha.ignorada && (
+              <p className="px-2 pb-1 text-micro text-warning">
+                etapa incompleta — ignorada no cálculo
+              </p>
+            )}
+
+            {/* o subtotal fecha o bloco de bloqueios antes das etapas do usuário */}
+            {ultimoDuro && linha.ordem === ultimoDuro.ordem && cortadosDuros > 0 && (
+              <div className="mb-1 flex items-baseline justify-between border-b border-border px-2 pb-1.5 pt-1 text-micro text-muted-foreground">
+                <span>subtotal dos bloqueios · antes dos seus filtros</span>
+                <span className="tabular-nums">
+                  −{formatarNumero(cortadosDuros)}
+                  <span className="ml-3">{formatarNumero(linha.restam)}</span>
+                </span>
+              </div>
+            )}
+          </div>
         ))}
 
         <div className="mt-2 flex items-baseline justify-between border-t border-border px-2 pt-2.5">

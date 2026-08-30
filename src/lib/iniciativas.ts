@@ -40,8 +40,22 @@ export interface Etapa {
   /**
    * false (padrão) — a etapa é FILTRO: quem não tem o dado sai.
    * true            — a etapa é REFINO: quem não tem o dado segue sem ser julgado.
+   *
+   * Substituído por `sem_dado`; continua sendo lido nos modelos já salvos.
    */
   manter_sem_dado?: boolean
+  /**
+   * O que fazer com quem a etapa não conseguiu julgar — e, no caso do `apenas`,
+   * o que fazer com a etapa inteira.
+   *
+   * 'excluir' (padrão) — tira da lista: quem não tem o dado sai.
+   * 'manter'           — mantém na lista: quem não tem o dado segue sem ser julgado.
+   * 'apenas'           — inverte a etapa: fica só quem NÃO a satisfaz.
+   *
+   * O `apenas` existe porque "quem comprou e não tem conta na área de membros" é
+   * uma pergunta de negócio real, e com dois estados era impossível de fazer.
+   */
+  sem_dado?: 'excluir' | 'manter' | 'apenas'
   /**
    * Ids de `campo_filtravel` que esta etapa TRAZ para o resultado.
    * Enriquecer não é só deixar de excluir: as colunas consultadas aqui chegam
@@ -94,6 +108,13 @@ export interface LinhaFunil {
   bloqueio_duro: boolean
   saem_aqui: number
   restam: number
+  /**
+   * A etapa não tem nenhuma condição que o motor consiga julgar — campo em
+   * branco, campo fora do catálogo ou operador ausente. Ela não corta ninguém,
+   * e a tela precisa dizer isso: sem o aviso, "não cortou" fica igual a
+   * "cortou zero".
+   */
+  ignorada?: boolean
 }
 
 export interface PessoaAvaliada {
@@ -188,11 +209,15 @@ export const SEM_VALOR = new Set(['preenchido', 'vazio', 'e_verdadeiro', 'e_fals
  * duas UIs.
  */
 export function normalizarEtapa(e: Etapa): Etapa {
-  if (Array.isArray(e.condicoes)) return e
+  // o booleano antigo vira o estado novo: os dois convivem no motor, mas o editor
+  // só sabe mexer em `sem_dado`, e um modelo salvo antes não tem o campo
+  const modo = e.sem_dado ?? (e.manter_sem_dado ? 'manter' : 'excluir')
+  if (Array.isArray(e.condicoes)) return e.sem_dado ? e : { ...e, sem_dado: modo }
   const { fonte, campo, operador, valor, quantificador, ...resto } =
     e as Etapa & { quantificador?: 'algum' | 'todo' }
   return {
     ...resto,
+    sem_dado: modo,
     combinador: e.combinador ?? 'qualquer',
     condicoes: campo
       ? [{ fonte: fonte ?? '', campo, operador: operador ?? '', valor, quantificador }]
@@ -256,6 +281,36 @@ export async function listarCampos(): Promise<CampoFiltravel[]> {
     .from('campo_filtravel').select('*').order('ordem')
   if (error) throw error
   return data ?? []
+}
+
+/** Quantas pessoas da base têm cada campo preenchido. */
+export interface Cobertura {
+  campo_id: string
+  com_dado: number
+  base: number
+  medido_em: string
+}
+
+/**
+ * A cobertura vem de uma tabela, não de um cálculo na hora.
+ *
+ * Medir os 57 campos custa ~7 s, e o teto do PostgREST é 8 s — o mesmo teto que
+ * já derrubou `gerar_lista` com um 500 opaco. Como a cobertura só muda quando o
+ * dado muda, ela é gravada por `medir_cobertura()` e lida pronta aqui.
+ *
+ * Tabela vazia é resposta legítima: quer dizer "ainda não medimos", e a tela
+ * simplesmente não mostra o aviso. Nunca é motivo para bloquear o filtro.
+ */
+export async function listarCobertura(): Promise<Map<string, Cobertura>> {
+  const { data, error } = await exigirSupabase().from('cobertura_campo').select('*')
+  if (error) throw error
+  return new Map((data ?? []).map((c: Cobertura) => [c.campo_id, c]))
+}
+
+/** Remede tudo. Custa ~7 s: só sob demanda, nunca por render de tela. */
+export async function medirCobertura(): Promise<void> {
+  const { error } = await exigirSupabase().rpc('medir_cobertura')
+  if (error) throw error
 }
 
 /** Valores distintos de um campo, para o seletor não exigir digitação exata. */

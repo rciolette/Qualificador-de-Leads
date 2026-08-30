@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  ChevronDown, ChevronUp, Columns3, GripVertical, Plus, Trash2, X,
+  AlertTriangle, ChevronDown, ChevronUp, Columns3, GripVertical, Plus, Trash2, X,
 } from 'lucide-react'
 import {
-  listarCampos, valoresDe, normalizarEtapa, OPERADORES, SEM_VALOR,
+  listarCampos, listarCobertura, valoresDe, normalizarEtapa, OPERADORES, SEM_VALOR,
   type CampoFiltravel, type Condicao, type Etapa,
 } from '@/lib/iniciativas'
 import { Button } from '@/components/ui/button'
@@ -114,6 +114,20 @@ function CartaoEtapa({
   const condicoes = etapa.condicoes ?? []
   const varias = condicoes.length > 1
 
+  /**
+   * A mesma regra do motor, para a tela não discordar dele: condição sem campo,
+   * sem operador, ou com operador que pede valor e não tem, é ignorada. Etapa
+   * cujas condições foram todas ignoradas não corta ninguém — e precisa dizer
+   * isso, senão "não cortou" fica igual a "cortou zero".
+   */
+  const incompleta = condicoes.every((c) => {
+    const k = campos.find((x) => x.fonte === c.fonte && x.caminho === c.campo)
+    if (!k || !c.operador) return true
+    if (SEM_VALOR.has(c.operador)) return false
+    return c.valor === undefined || c.valor === null || c.valor === ''
+      || (Array.isArray(c.valor) && c.valor.length === 0)
+  })
+
   function mudarCondicao(k: number, m: Partial<Condicao>) {
     aoAtualizar({ condicoes: condicoes.map((c, i) => (i === k ? { ...c, ...m } : c)) })
   }
@@ -158,8 +172,18 @@ function CartaoEtapa({
   }
 
   return (
-    <Card className={cn(!etapa.ativa && 'opacity-50')}>
+    <Card className={cn(
+      !etapa.ativa && 'opacity-50',
+      incompleta && 'border-dashed border-warning/60',
+    )}>
       <CardContent className="space-y-3 pt-4">
+        {incompleta && (
+          <p role="status" className="flex items-start gap-2 rounded-lg bg-warning/10 px-3 py-2 text-micro text-warning">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+            Etapa incompleta — ignorada no cálculo. Ela não tira ninguém da lista
+            enquanto estiver assim.
+          </p>
+        )}
         <div className="flex items-center gap-2">
           <div className="flex flex-col">
             <button onClick={() => aoMover(-1)} disabled={indice === 0}
@@ -224,25 +248,9 @@ function CartaoEtapa({
           <Plus className="h-3.5 w-3.5" /> Consultar outra plataforma nesta etapa
         </Button>
 
-        {/* a decisão que separa filtro de refino */}
-        <label className="flex items-start justify-between gap-4 rounded-lg bg-muted/40 px-3 py-2">
-          <span className="text-label">
-            Manter quem não tem esse dado
-            <span className="mt-0.5 block text-micro text-muted-foreground">
-              {etapa.manter_sem_dado
-                ? varias
-                  ? 'Refino: quem não pôde ser julgado por nenhuma das condições segue no funil.'
-                  : 'Refino: quem não está nessa plataforma segue no funil sem ser julgado aqui.'
-                : varias
-                  ? 'Filtro: quem não pôde ser julgado por nenhuma das condições sai do funil.'
-                  : 'Filtro: quem não está nessa plataforma sai do funil nesta etapa.'}
-            </span>
-          </span>
-          <Switch
-            checked={etapa.manter_sem_dado ?? false}
-            onCheckedChange={(v) => aoAtualizar({ manter_sem_dado: v })}
-          />
-        </label>
+        <ModoDaEtapa etapa={etapa} varias={varias} aoAtualizar={aoAtualizar} />
+
+        <AvisoDeCobertura etapa={etapa} campos={campos} />
 
         <ColunasTrazidas
           etapa={etapa}
@@ -252,6 +260,159 @@ function CartaoEtapa({
         />
       </CardContent>
     </Card>
+  )
+}
+
+/**
+ * O que a etapa faz — três modos, não dois.
+ *
+ * Era um switch "manter quem não tem esse dado", que só sabia responder filtro
+ * ou refino. Faltava o inverso: "quem comprou e NÃO tem conta na MemberClass" é
+ * uma pergunta que o time comercial faz toda semana e que não dava para montar.
+ *
+ * Os três aparecem lado a lado de propósito. Escondidos atrás de um switch, o
+ * segundo e o terceiro modo não existiam para quem não lia a documentação.
+ */
+function ModoDaEtapa({
+  etapa, varias, aoAtualizar,
+}: {
+  etapa: Etapa
+  varias: boolean
+  aoAtualizar: (m: Partial<Etapa>) => void
+}) {
+  const atual = etapa.sem_dado ?? (etapa.manter_sem_dado ? 'manter' : 'excluir')
+
+  const modos = [
+    {
+      v: 'excluir' as const,
+      titulo: 'Tira da lista',
+      curto: 'quem não bate sai',
+      longo: varias
+        ? 'Segue quem satisfaz a etapa. Quem não pôde ser julgado por nenhuma das condições sai.'
+        : 'Segue quem satisfaz a etapa. Quem não está nessa plataforma sai.',
+    },
+    {
+      v: 'manter' as const,
+      titulo: 'Mantém na lista',
+      curto: 'sem conta continua',
+      longo: varias
+        ? 'Segue quem satisfaz a etapa, e também quem nenhuma condição conseguiu julgar.'
+        : 'Segue quem satisfaz a etapa, e também quem não está nessa plataforma.',
+    },
+    {
+      v: 'apenas' as const,
+      titulo: 'Só esses',
+      curto: 'inverte a etapa',
+      longo: 'Inverte: segue exatamente quem NÃO satisfaz a etapa — inclusive quem não tem o dado.',
+    },
+  ]
+
+  return (
+    <div className="rounded-lg bg-muted/40 p-3">
+      <p className="mb-2 text-micro uppercase text-muted-foreground">O que esta etapa faz</p>
+      <div className="grid gap-1.5 sm:grid-cols-3">
+        {modos.map((m) => (
+          <button
+            key={m.v}
+            type="button"
+            aria-pressed={atual === m.v}
+            onClick={() => aoAtualizar({
+              sem_dado: m.v,
+              // o booleano antigo acompanha, para o caso de o modelo ser lido
+              // por algo que ainda não conheça `sem_dado`
+              manter_sem_dado: m.v === 'manter',
+            })}
+            className={cn(
+              'rounded-md border px-2.5 py-2 text-left transition-colors',
+              atual === m.v
+                ? 'border-primary bg-background shadow-sm'
+                : 'border-transparent hover:bg-background/60',
+            )}
+          >
+            <span className={cn('block text-label',
+              atual === m.v ? 'font-medium text-foreground' : 'text-muted-foreground')}>
+              {m.titulo}
+            </span>
+            <span className="block text-micro text-muted-foreground">{m.curto}</span>
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 text-micro text-muted-foreground">
+        {modos.find((m) => m.v === atual)?.longo}
+      </p>
+    </div>
+  )
+}
+
+/**
+ * Quantos da base a etapa pode alcançar, antes de ela rodar.
+ *
+ * Escolher um campo do MemberKit leva 4.430 pessoas a 105, e até aqui a única
+ * forma de descobrir isso era gerar a lista e ver o número murchar — depois de
+ * montar o fluxo inteiro. O teto é uma conta simples: como filtro, a etapa não
+ * pode devolver mais gente do que tem o dado.
+ *
+ * Só avisa quando há o que avisar. Campo bem coberto não vira aviso, senão o
+ * aviso perde o sentido de existir; e no modo refino a cobertura baixa não é
+ * problema nenhum — é exatamente para isso que o refino serve.
+ */
+function AvisoDeCobertura({ etapa, campos }: { etapa: Etapa; campos: CampoFiltravel[] }) {
+  const cobertura = useQuery({
+    queryKey: ['cobertura'],
+    queryFn: listarCobertura,
+    staleTime: 10 * 60_000,
+  })
+
+  const modo = etapa.sem_dado ?? (etapa.manter_sem_dado ? 'manter' : 'excluir')
+  if (modo !== 'excluir' || !cobertura.data?.size) return null
+
+  const usados = (etapa.condicoes ?? [])
+    .map((c) => campos.find((k) => k.fonte === c.fonte && k.caminho === c.campo))
+    .filter((k): k is CampoFiltravel => Boolean(k))
+    .map((k) => ({ campo: k, cob: cobertura.data!.get(k.id) }))
+    .filter((x) => x.cob && x.cob.base > 0)
+  if (usados.length === 0) return null
+
+  // 'todas' exige o dado das duas pontas, então o teto é o campo mais escasso;
+  // 'qualquer' basta uma, então o teto é o mais coberto
+  const combinador = etapa.combinador ?? 'qualquer'
+  const escolhido = usados.reduce((a, b) =>
+    (combinador === 'todas'
+      ? (a.cob!.com_dado <= b.cob!.com_dado ? a : b)
+      : (a.cob!.com_dado >= b.cob!.com_dado ? a : b)))
+
+  const { com_dado: com, base } = escolhido.cob!
+  const pct = Math.round((100 * com) / base)
+  if (pct >= 60) return null
+
+  const grave = pct === 0
+  return (
+    <p
+      role="status"
+      className={cn(
+        'flex items-start gap-2 rounded-lg px-3 py-2 text-micro',
+        grave
+          ? 'bg-destructive/10 text-destructive'
+          : 'bg-amber-500/10 text-amber-700 dark:text-amber-400',
+      )}
+    >
+      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+      <span>
+        {grave ? (
+          <>
+            Ninguém da base tem <strong>{escolhido.campo.rotulo}</strong> preenchido.
+            Como filtro, esta etapa zera a lista. Use “Mantém na lista”, ou sincronize a
+            plataforma antes.
+          </>
+        ) : (
+          <>
+            <strong>{escolhido.campo.rotulo}</strong> existe para {com.toLocaleString('pt-BR')}{' '}
+            das {base.toLocaleString('pt-BR')} pessoas ({pct}%). Como filtro, esta etapa
+            devolve no máximo isso — quem não tem o dado sai.
+          </>
+        )}
+      </span>
+    </p>
   )
 }
 

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, ArrowRight, BookmarkPlus, Check, Database, Download, Filter,
-  ListChecks, Sparkles, Wand2,
+  AlertTriangle, ListChecks, Sparkles, Undo2, Wand2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { MapeamentoArquivo } from '@/components/MapeamentoArquivo'
@@ -132,8 +132,31 @@ export function FluxoPage() {
   const [antiFadiga, setAntiFadiga] = useState(inicial.antiFadiga ?? 7)
   const [perdidoDias, setPerdidoDias] = useState(inicial.perdidoDias ?? 15)
   const [etapas, setEtapas] = useState<Etapa[]>(inicial.etapas ?? [])
+  /**
+   * Desfazer o funil, e só ele.
+   *
+   * Remover uma etapa é um clique num ícone de lixeira sem confirmação, e a
+   * etapa levava junto as colunas e o rótulo que a pessoa escreveu. Sem
+   * histórico, o único caminho de volta era remontar tudo à mão.
+   *
+   * Guarda 20 passos porque montar um funil é uma sequência de ajustes miúdos —
+   * e vive fora do rascunho de propósito: recarregar a aba recomeça o histórico,
+   * mas não perde o funil.
+   */
+  const [historico, setHistorico] = useState<Etapa[][]>([])
+  function mudarEtapas(novas: Etapa[]) {
+    setHistorico((h) => [...h, etapas].slice(-20))
+    setEtapas(novas)
+  }
+  function desfazer() {
+    // os dois `set` são independentes de propósito: chamar `setEtapas` de dentro
+    // do updater de `setHistorico` é efeito colateral em função que o StrictMode
+    // executa duas vezes
+    if (historico.length === 0) return
+    setEtapas(historico[historico.length - 1])
+    setHistorico(historico.slice(0, -1))
+  }
   const [pesos, setPesos] = useState<Record<string, number>>(inicial.pesos ?? {})
-  const [funil, setFunil] = useState<LinhaFunil[]>([])
 
   const perfis = useQuery({ queryKey: ['perfis'], queryFn: listarPerfis })
   const recortes = useQuery({ queryKey: ['recortes'], queryFn: listarRecortes })
@@ -147,9 +170,16 @@ export function FluxoPage() {
     queryKey: ['funil', etapas, config],
     queryFn: () => calcularFunil(etapas, config),
     enabled: passo >= 2,
+    // segura o funil anterior enquanto recalcula, em vez de piscar para vazio.
+    // Era um `useState` espelhado por `useEffect`, e ele tinha um efeito
+    // colateral grave: em erro o espelho ficava `[]` e a tela mostrava
+    // "universo 0 · lista final 0" — um número inventado, indistinguível de um
+    // funil que de fato não sobrou ninguém. Erro tem que aparecer como erro.
+    placeholderData: (anterior) => anterior,
   })
-  useEffect(() => { if (calcular.data) setFunil(calcular.data) }, [calcular.data])
 
+  const funil: LinhaFunil[] = calcular.data ?? []
+  const funilFalhou = calcular.isError && !calcular.data
   const final = funil.find((l) => l.ordem === 999)?.saem_aqui ?? 0
   const universo = funil[0] ? funil[0].saem_aqui + funil[0].restam : 0
   const semPeso = Object.values(pesos).every((v) => !v)
@@ -425,10 +455,22 @@ export function FluxoPage() {
 
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-heading">O funil, etapa a etapa</CardTitle>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <CardTitle className="text-heading">O funil, etapa a etapa</CardTitle>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={desfazer}
+                    disabled={historico.length === 0}
+                  >
+                    <Undo2 className="h-3.5 w-3.5" />
+                    Desfazer
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
-                <ConstrutorEtapas etapas={etapas} aoMudar={setEtapas} />
+                <ConstrutorEtapas etapas={etapas} aoMudar={mudarEtapas} />
               </CardContent>
             </Card>
 
@@ -488,10 +530,26 @@ export function FluxoPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <FunilExclusao funil={funil} carregando={calcular.isFetching}
-                  etapas={etapas} iniciativa={config} />
+                {funilFalhou ? (
+                  <div className="space-y-3 rounded-lg bg-destructive/10 px-3 py-3 text-label text-destructive">
+                    <p className="flex items-start gap-2">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                      <span>
+                        Não consegui calcular o funil. Os números abaixo seriam inventados,
+                        então não mostro nenhum.
+                      </span>
+                    </p>
+                    <p className="text-micro opacity-80">{(calcular.error as Error)?.message}</p>
+                    <Button variant="outline" size="sm" onClick={() => calcular.refetch()}>
+                      Tentar de novo
+                    </Button>
+                  </div>
+                ) : (
+                  <FunilExclusao funil={funil} carregando={calcular.isFetching}
+                    etapas={etapas} iniciativa={config} />
+                )}
 
-                {universo > 0 && final === 0 && etapas.length > 0 && (
+                {!funilFalhou && universo > 0 && final === 0 && etapas.length > 0 && (
                   <p className="mt-4 rounded-lg bg-warning/15 px-3 py-2 text-label text-warning">
                     Nenhuma pessoa sobrou. Alguma etapa pode estar cortando por dado que ainda
                     não sincronizou — experimente ligar "manter quem não tem esse dado" nela.
