@@ -1,7 +1,7 @@
 import { exigirSupabase, supabase, FUNCTIONS_URL } from './supabase'
 import type {
   Diagnostico, Execucao, Frescor, Importacao, Integracao, Papel, Projeto,
-  ResultadoCredencial, ResultadoEspelho, ResultadoImportacao, ResultadoSync,
+  ResultadoCredencial, ResultadoEspelho, ResultadoSync,
 } from './tipos'
 
 /** Chama uma Edge Function do Qualificador com o JWT da sessão atual. */
@@ -57,32 +57,6 @@ export async function listarExecucoes(limite = 30): Promise<Execucao[]> {
  */
 export function salvarCredencial(slug: string, token: string) {
   return chamarFuncao<ResultadoCredencial>('qualificador-credencial-salvar', { slug, token })
-}
-
-/**
- * Envia o CSV da Assiny para a Edge Function, que carrega o staging e ingere.
- * Não usa `chamarFuncao` porque o corpo é multipart, não JSON.
- */
-export async function importarAssiny(arquivo: File): Promise<ResultadoImportacao> {
-  const { data: { session } } = await exigirSupabase().auth.getSession()
-  if (!session) throw new Error('Sessão expirada. Entre de novo.')
-
-  const form = new FormData()
-  form.append('arquivo', arquivo)
-
-  const r = await fetch(`${FUNCTIONS_URL}/qualificador-importar-assiny`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${session.access_token}` },
-    body: form,
-  })
-  const dados = await r.json().catch(() => ({}))
-  if (!r.ok) {
-    const erro = new Error(dados?.erro ?? `Importação falhou: HTTP ${r.status}`)
-    // projeto fora do catálogo é decisão pendente, não falha do sistema
-    ;(erro as Error & { bloqueio?: boolean }).bloqueio = Boolean(dados?.bloqueio_de_catalogo)
-    throw erro
-  }
-  return dados as ResultadoImportacao
 }
 
 /** Checa a credencial sem ler nem gravar nada. O diagnóstico É a resposta. */

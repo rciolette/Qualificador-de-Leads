@@ -241,6 +241,32 @@ aí sobra uma iniciativa sem lista. Partindo da lista, ela ficaria invisível �
 `/iniciativas` e `/iniciativas/nova` continuam de pé como redirect.
 `listarIniciativas()` foi removida de `iniciativas.ts`: virou código morto.
 
+### Duplicata de importação resolvida (30/08)
+
+Havia duas Edge Functions de importação, e só uma era usada:
+
+| função | criada | usada por |
+|---|---|---|
+| `qualificador-importar` | 27/08, v4 | **o app inteiro** (`analisarArquivos` → analisar/ingerir) |
+| `qualificador-importar-assiny` | 27/08, v1 | `importarAssiny()`, que **não tinha chamador** |
+
+A genérica é a mais recente e a que faz mais: ela separa `analisar` de `ingerir`,
+que é o que permite arrastar planilha de qualquer origem e revisar o de-para
+antes de gravar. A específica da Assiny era o passo anterior do projeto, e ficou
+órfã quando o fluxo guiado assumiu o passo 1.
+
+Removidos: `importarAssiny()` e `ResultadoImportacao` de `dados.ts`/`tipos.ts`;
+a pasta foi para `_to_delete/`. **A função em si continua ACTIVE no Supabase** —
+o MCP não tem `delete_edge_function`, então apagá-la é pelo painel ou pelo CLI.
+Não tem chamador nenhum, então é inofensiva; só ocupa a lista.
+
+**Outras duplicatas do PROJETO, que NÃO são do Qualificador e não foram tocadas:**
+quatro funções de magic link (`resend-` / `enviar-` / `gerar-magic-link`,
+`temp-batch-magic-links`) e quatro de integração (`integracoes-externas-api`,
+`integracoes-externas-dispatch`, `integracoes-api-check`, `conectores-health`).
+São do Gerador de Links / Dashboard, ambos em produção — mexer nelas é fora do
+escopo deste repo pela regra da seção 2.
+
 ### A rotina noturna (30/08) — job 49, `qualificador-madrugada`
 
 `*/2 4-6 * * *` UTC = **01:00 às 03:59 de Brasília**, a cada 2 minutos.
