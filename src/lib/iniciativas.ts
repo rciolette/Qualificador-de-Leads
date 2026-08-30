@@ -29,6 +29,12 @@ export interface Etapa {
   condicoes?: Condicao[]
   /** 'qualquer' (padrão) = união · 'todas' = interseção. Vale para a etapa. */
   combinador?: 'qualquer' | 'todas'
+  /**
+   * A plataforma escolhida no cartão (`hubspot` | `memberclass` | `memberkit` |
+   * `sellflux`). Não entra no motor: serve para o seletor de campo já abrir
+   * filtrado nela, e para o cartão dizer de onde está perguntando.
+   */
+  origem?: string
 
   // ---- formato antigo, preservado para os modelos já salvos
   fonte?: string
@@ -311,6 +317,73 @@ export async function listarCobertura(): Promise<Map<string, Cobertura>> {
 export async function medirCobertura(): Promise<void> {
   const { error } = await exigirSupabase().rpc('medir_cobertura')
   if (error) throw error
+}
+
+/**
+ * As fontes do catálogo que pertencem a cada plataforma.
+ *
+ * O HubSpot tem quatro: os campos derivados (`hubspot`), a saúde de disparo, e
+ * as properties nativas de contato e de negócio. Quem escolhe "HubSpot" no
+ * cartão espera ver as quatro.
+ */
+export const FONTES_DA_ORIGEM: Record<string, string[]> = {
+  hubspot: ['hubspot', 'hubspot_contato', 'hubspot_negocio'],
+  memberclass: ['memberclass'],
+  memberkit: ['memberkit'],
+  sellflux: ['sellflux'],
+}
+
+/** Uma plataforma como origem de consulta, com o que o cartão precisa mostrar. */
+export interface Origem {
+  slug: string
+  nome: string
+  ativa: boolean
+  /** quantas pessoas da base existem nesta plataforma */
+  pessoas: number
+  base: number
+  ultima_sync: string | null
+  horas_desde: number | null
+  vencida: boolean
+  limite_horas: number
+}
+
+/**
+ * Cobertura POR PLATAFORMA — outra pergunta da que `cobertura_campo` responde.
+ *
+ * "Aulas assistidas" cobre 97,9% das pessoas *que estão na MemberClass*; o
+ * cartão de origem precisa saber quantas estão lá, ponto. Escolher MemberKit
+ * sem esse número é escolher às cegas um filtro que leva 4.430 a 105.
+ */
+export async function listarOrigens(): Promise<Origem[]> {
+  const { data, error } = await exigirSupabase().rpc('cobertura_origens')
+  if (error) throw error
+  return (data ?? []) as Origem[]
+}
+
+export interface QuemSaiuItem {
+  pessoa_id: string
+  nome: string | null
+  email: string | null
+  /** null nos bloqueios duros: lá o motivo é o próprio nome da linha */
+  motivo: 'sem_dado' | 'nao_atende' | null
+}
+
+/**
+ * Amostra de quem saiu numa etapa, com o motivo.
+ *
+ * O motivo não é decoração: `sem dado` e `não atende` levam a decisões opostas.
+ * Sem o dado, sincronizar a origem ou mudar o modo para "Mantém na lista"
+ * resolve; com o dado e sem atender, só mexer no operador resolve — e
+ * sincronizar não muda nada.
+ */
+export async function quemSaiu(
+  etapas: Etapa[], i: Partial<Iniciativa>, ordem: number | null, limite = 6,
+): Promise<QuemSaiuItem[]> {
+  const { data, error } = await exigirSupabase().rpc('amostra_da_etapa', {
+    p_etapas: etapas, p_config: config(i), p_ordem: ordem, p_limite: limite,
+  })
+  if (error) throw error
+  return (data ?? []) as QuemSaiuItem[]
 }
 
 /** Valores distintos de um campo, para o seletor não exigir digitação exata. */

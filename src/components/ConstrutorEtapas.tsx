@@ -1,19 +1,21 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  AlertTriangle, ChevronDown, ChevronUp, Columns3, GripVertical, Plus, Trash2, X,
+  AlertTriangle, ChevronDown, ChevronUp, Columns3, GripVertical, Plus, Trash2, Users, X,
 } from 'lucide-react'
 import {
   listarCampos, listarCobertura, valoresDe, normalizarEtapa, OPERADORES, SEM_VALOR,
-  type CampoFiltravel, type Condicao, type Etapa,
+  quemSaiu, FONTES_DA_ORIGEM,
+  type CampoFiltravel, type Condicao, type Etapa, type Iniciativa, type Origem,
+  type QuemSaiuItem,
 } from '@/lib/iniciativas'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Card, CardContent } from '@/components/ui/card'
 import { SeletorDeCampo } from '@/components/SeletorDeCampo'
+import { SeletorDeOrigem } from '@/components/SeletorDeOrigem'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -25,10 +27,12 @@ const novoId = () => `etapa_${Date.now()}_${contador++}`
 const CONDICAO_VAZIA: Condicao = { fonte: '', campo: '', operador: '', valor: undefined }
 
 export function ConstrutorEtapas({
-  etapas, aoMudar,
+  etapas, aoMudar, iniciativa,
 }: {
   etapas: Etapa[]
   aoMudar: (e: Etapa[]) => void
+  /** para o rodapé do cartão dizer quem saiu ali, com os mesmos parâmetros do funil */
+  iniciativa: Partial<Iniciativa>
 }) {
   const campos = useQuery({ queryKey: ['campos'], queryFn: listarCampos })
 
@@ -45,11 +49,32 @@ export function ConstrutorEtapas({
   // o motor aceita os dois, mas o editor só sabe mexer no novo
   const normalizadas = useMemo(() => etapas.map(normalizarEtapa), [etapas])
 
-  function adicionar() {
+  /**
+   * O seletor de origem abre sozinho quando não há etapa nenhuma: a primeira
+   * pergunta de quem chega aqui é "de onde eu consulto?", e uma tela vazia com
+   * um botão não responde isso.
+   */
+  const [escolhendoOrigem, setEscolhendoOrigem] = useState(etapas.length === 0)
+
+  function adicionarDaOrigem(origem: Origem) {
     aoMudar([...normalizadas, {
-      id: novoId(), rotulo: '', ativa: true,
+      id: novoId(), rotulo: '', ativa: true, origem: origem.slug,
       combinador: 'qualquer', condicoes: [{ ...CONDICAO_VAZIA }], colunas: [],
     }])
+    setEscolhendoOrigem(false)
+  }
+
+  /**
+   * "Filtrar de novo aqui" é outra coisa de "Consultar outra origem", e os
+   * nomes precisam dizer isso. Uma condição a mais no mesmo cartão é uma
+   * pergunta a mais sobre a MESMA plataforma, combinada por E/OU; um cartão
+   * novo é outra plataforma, aplicada a quem sobrou do anterior. Um botão só
+   * chamado "adicionar" deixava as duas indistinguíveis.
+   */
+  function filtrarDeNovoNoUltimo() {
+    if (normalizadas.length === 0) return
+    const i = normalizadas.length - 1
+    atualizar(i, { condicoes: [...(normalizadas[i].condicoes ?? []), { ...CONDICAO_VAZIA }] })
   }
 
   function atualizar(i: number, mudanca: Partial<Etapa>) {
@@ -78,21 +103,34 @@ export function ConstrutorEtapas({
           total={normalizadas.length}
           porGrupo={porGrupo}
           campos={campos.data ?? []}
+          etapas={normalizadas}
+          iniciativa={iniciativa}
           aoAtualizar={(m) => atualizar(i, m)}
           aoRemover={() => remover(i)}
           aoMover={(d) => mover(i, d)}
         />
       ))}
 
-      <Button variant="outline" className="w-full gap-2" onClick={adicionar}>
-        <Plus className="h-4 w-4" />
-        {normalizadas.length === 0 ? 'Começar pela primeira etapa' : 'Filtrar mais um pouco'}
-      </Button>
+      {escolhendoOrigem ? (
+        <SeletorDeOrigem
+          aoEscolher={adicionarDaOrigem}
+          aoCancelar={normalizadas.length > 0 ? () => setEscolhendoOrigem(false) : undefined}
+        />
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Button variant="outline" className="gap-2" onClick={() => setEscolhendoOrigem(true)}>
+            <Plus className="h-4 w-4" /> Consultar outra origem
+          </Button>
+          <Button variant="ghost" className="gap-2" onClick={filtrarDeNovoNoUltimo}
+            disabled={normalizadas.length === 0}>
+            <Plus className="h-4 w-4" /> Filtrar de novo aqui
+          </Button>
+        </div>
+      )}
 
-      {normalizadas.length === 0 && (
+      {normalizadas.length === 0 && !escolhendoOrigem && (
         <p className="text-label text-muted-foreground">
-          Cada etapa recebe quem sobrou da anterior. Comece pela Assiny — quem comprou o quê —
-          e vá estreitando com as outras plataformas.
+          Cada cartão recebe quem sobrou do anterior.
         </p>
       )}
     </div>
@@ -100,17 +138,23 @@ export function ConstrutorEtapas({
 }
 
 function CartaoEtapa({
-  etapa, indice, total, porGrupo, campos, aoAtualizar, aoRemover, aoMover,
+  etapa, indice, total, porGrupo, campos, etapas, iniciativa,
+  aoAtualizar, aoRemover, aoMover,
 }: {
   etapa: Etapa
   indice: number
   total: number
   porGrupo: Map<string, CampoFiltravel[]>
   campos: CampoFiltravel[]
+  etapas: Etapa[]
+  iniciativa: Partial<Iniciativa>
   aoAtualizar: (m: Partial<Etapa>) => void
   aoRemover: () => void
   aoMover: (delta: number) => void
 }) {
+  // o motor numera as etapas do usuário a partir de 10 (1-8 são bloqueio duro)
+  const ordemNoFunil = indice + 10
+  const fontes = etapa.origem ? FONTES_DA_ORIGEM[etapa.origem] : undefined
   const condicoes = etapa.condicoes ?? []
   const varias = condicoes.length > 1
 
@@ -237,6 +281,7 @@ function CartaoEtapa({
               indice={k}
               podeRemover={condicoes.length > 1}
               campos={campos}
+              fontes={fontes}
               aoMudar={(m) => mudarCondicao(k, m)}
               aoEscolherCampo={(novo) => escolherCampo(k, novo)}
               aoRemover={() => tirarCondicao(k)}
@@ -245,7 +290,7 @@ function CartaoEtapa({
         </div>
 
         <Button variant="ghost" size="sm" className="gap-1.5 text-label" onClick={addCondicao}>
-          <Plus className="h-3.5 w-3.5" /> Consultar outra plataforma nesta etapa
+          <Plus className="h-3.5 w-3.5" /> Filtrar de novo aqui
         </Button>
 
         <ModoDaEtapa etapa={etapa} varias={varias} aoAtualizar={aoAtualizar} />
@@ -258,6 +303,8 @@ function CartaoEtapa({
           porGrupo={porGrupo}
           aoAtualizar={aoAtualizar}
         />
+
+        <QuemSaiuAqui etapas={etapas} iniciativa={iniciativa} ordem={ordemNoFunil} />
       </CardContent>
     </Card>
   )
@@ -416,14 +463,105 @@ function AvisoDeCobertura({ etapa, campos }: { etapa: Etapa; campos: CampoFiltra
   )
 }
 
+/**
+ * "Ver quem saiu" — seis nomes e o porquê.
+ *
+ * O número do funil diz quantos saíram; ele não diz se saíram porque não têm o
+ * dado ou porque têm e não servem. São diagnósticos opostos: `sem dado` se
+ * resolve trocando o modo da etapa ou sincronizando a origem, `não atende` só
+ * se resolve mexendo no operador. Sem isso, quem vê a lista murchar sincroniza
+ * quando o problema era o filtro.
+ *
+ * Fechado por padrão e só consulta quando aberto: são 6 linhas de diagnóstico,
+ * não algo que precise custar uma chamada a cada recálculo.
+ */
+function QuemSaiuAqui({
+  etapas, iniciativa, ordem,
+}: {
+  etapas: Etapa[]
+  iniciativa: Partial<Iniciativa>
+  ordem: number
+}) {
+  const [aberto, setAberto] = useState(false)
+
+  const amostra = useQuery({
+    queryKey: ['quem-saiu', ordem, etapas, iniciativa],
+    queryFn: () => quemSaiu(etapas, iniciativa, ordem),
+    enabled: aberto,
+  })
+
+  const rotuloMotivo = (m: QuemSaiuItem['motivo']) =>
+    m === 'sem_dado' ? 'sem dado' : m === 'nao_atende' ? 'não atende' : '—'
+
+  return (
+    <div className="rounded-lg border border-border">
+      <button
+        onClick={() => setAberto(!aberto)}
+        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
+      >
+        <span className="flex items-center gap-2 text-label">
+          <Users className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+          Ver quem saiu aqui
+        </span>
+        {aberto ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+      </button>
+
+      {aberto && (
+        <div className="border-t border-border p-3">
+          {amostra.isLoading && (
+            <p className="text-micro text-muted-foreground">buscando…</p>
+          )}
+          {amostra.isError && (
+            <p className="text-micro text-destructive">
+              {(amostra.error as Error).message}
+            </p>
+          )}
+          {amostra.data?.length === 0 && (
+            <p className="text-micro text-muted-foreground">
+              Ninguém saiu nesta etapa.
+            </p>
+          )}
+          <ul className="space-y-1">
+            {(amostra.data ?? []).map((p) => (
+              <li key={p.pessoa_id}
+                className="flex items-baseline justify-between gap-3 text-label">
+                <span className="min-w-0 truncate">
+                  {p.nome ?? p.email ?? '—'}
+                </span>
+                <Badge
+                  variant="outline"
+                  className={cn('shrink-0 font-normal',
+                    p.motivo === 'sem_dado' && 'border-amber-500/50 text-amber-700 dark:text-amber-400')}
+                >
+                  {rotuloMotivo(p.motivo)}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+          {(amostra.data?.length ?? 0) > 0 && (
+            <p className="mt-2 text-micro text-muted-foreground">
+              Amostra de 6. <strong>sem dado</strong> = a pessoa não está nessa
+              plataforma; muda com “Mantém na lista” ou sincronizando a origem.{' '}
+              <strong>não atende</strong> = está lá e não satisfaz; só muda mexendo
+              na condição.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function LinhaCondicao({
-  condicao, indice, podeRemover, campos,
+  condicao, indice, podeRemover, campos, fontes,
   aoMudar, aoEscolherCampo, aoRemover,
 }: {
   condicao: Condicao
   indice: number
   podeRemover: boolean
   campos: CampoFiltravel[]
+  /** as fontes da plataforma do cartão: o seletor já abre restrito a elas */
+  fontes?: string[]
   aoMudar: (m: Partial<Condicao>) => void
   aoEscolherCampo: (campo: CampoFiltravel) => void
   aoRemover: () => void
@@ -465,18 +603,24 @@ function LinhaCondicao({
         )}
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-3">
-        <div className="space-y-1">
-          <Label className="text-micro uppercase text-muted-foreground">Onde consultar</Label>
+      {/* Uma frase, não três colunas rotuladas.
+          ONDE CONSULTAR / CONDIÇÃO / VALOR obrigava a ler três cabeçalhos para
+          entender uma regra que se diz numa linha — e os cabeçalhos não eram
+          nem os termos do negócio. "Manter quem tem 3 ou mais aulas assistidas"
+          é a mesma informação, na ordem em que se pensa nela. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-label text-muted-foreground">Manter quem</span>
+
+        <div className="min-w-[12rem] flex-1">
           <SeletorDeCampo
             campos={campos}
+            fontes={fontes}
             valor={campo ? `${campo.fonte}|${campo.caminho}` : ''}
             aoEscolher={aoEscolherCampo}
           />
         </div>
 
-        <div className="space-y-1">
-          <Label className="text-micro uppercase text-muted-foreground">Condição</Label>
+        <div className="min-w-[9rem]">
           <Select
             value={condicao.operador}
             onValueChange={(v) => aoMudar({ operador: v, valor: undefined })}
@@ -491,11 +635,10 @@ function LinhaCondicao({
           </Select>
         </div>
 
-        <div className="space-y-1">
-          <Label className="text-micro uppercase text-muted-foreground">Valor</Label>
+        <div className="min-w-[9rem] flex-1">
           {!precisaValor ? (
             <div className="flex h-10 items-center text-label text-muted-foreground">
-              não precisa
+              —
             </div>
           ) : condicao.operador === 'entre' ? (
             <div className="flex gap-2">

@@ -23,14 +23,23 @@ import { cn } from '@/lib/utils'
  * rótulo que demos a ele.
  */
 export function SeletorDeCampo({
-  campos, valor, aoEscolher, id,
+  campos: todos, valor, aoEscolher, id, fontes,
 }: {
   campos: CampoFiltravel[]
   /** `${fonte}|${caminho}` do campo atual, ou '' */
   valor: string
   aoEscolher: (campo: CampoFiltravel) => void
   id?: string
+  /**
+   * Restringe às fontes da plataforma do cartão. O cartão já declarou de onde
+   * está perguntando — repetir as outras 50 opções aqui seria desfazer a
+   * escolha que ele acabou de fazer.
+   */
+  fontes?: string[]
 }) {
+  const campos = fontes?.length
+    ? todos.filter((c) => fontes.includes(c.fonte))
+    : todos
   const [aberto, setAberto] = useState(false)
   const [busca, setBusca] = useState('')
   const [plataforma, setPlataforma] = useState<string | null>(null)
@@ -152,7 +161,7 @@ export function SeletorDeCampo({
 
         {/* some enquanto há busca: aí a lista já ignora a plataforma, e deixar o
             chip aceso enquanto ele não filtra nada é mentira visual */}
-        {!busca.trim() && (
+        {!busca.trim() && !fontes?.length && (
           <div className="flex flex-wrap gap-1 border-b border-border px-2 py-2">
             <ChipPlataforma
               ativo={plataforma === null}

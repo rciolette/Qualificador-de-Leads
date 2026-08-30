@@ -485,7 +485,7 @@ export function FluxoPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <ConstrutorEtapas etapas={etapas} aoMudar={mudarEtapas} />
+                <ConstrutorEtapas etapas={etapas} aoMudar={mudarEtapas} iniciativa={config} />
               </CardContent>
             </Card>
 
