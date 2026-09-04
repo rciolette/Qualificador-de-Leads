@@ -267,6 +267,32 @@ quatro funções de magic link (`resend-` / `enviar-` / `gerar-magic-link`,
 São do Gerador de Links / Dashboard, ambos em produção — mexer nelas é fora do
 escopo deste repo pela regra da seção 2.
 
+### Pipeline e etapa do HubSpot agora são filtráveis (04/09)
+
+`pipeline` e `dealstage` estavam fora do catálogo desde a migration 53 porque são
+IDs (`711246125`, `1038914120`) — um seletor que oferece "1038914120" não serve.
+O vocabulário que faltava já existia em `integracao.config.stages_por_pipeline`:
+710485361 = AE · 711246125 = IS · 717654561 = ECONT, cada um com os ids de
+ganho / perdido / novos / em_conexao / conectado.
+
+`vocabulario_hubspot()` lê esse config e `derivados_negocio(deals)` produz as
+chaves que se pergunta de fato:
+
+| campo | o que responde | cobertura |
+|---|---|---|
+| `hs.times_ganho` | times com negócio GANHO (IS/AE/ECONT) | 5,9% |
+| `hs.times_perdido` | times com negócio perdido | 77,2% |
+| `hs.etapas_negocio` | "IS · Ganho", "ECONT · Em Conexao" | 81,0% |
+| `hs.dias_desde_ganho` · `hs.ganho_em` | quando foi o ganho mais recente | 5,9% |
+
+**`derivados_negocio` entra nos TRÊS lugares que montam o objeto do funil** —
+`garantir_pessoa_dados`, `medir_cobertura` e o caminho lento de `filtrar`
+(migrations 88 e 89). Deixar um de fora faria a cobertura contar uma coisa e o
+funil outra.
+
+Medido no caso "ganho em AE ou IS nos últimos 90 dias, não ganho em Econt":
+4.589 → 258 → 230 → **85**.
+
 ### A rotina noturna (30/08) — job 49, `qualificador-madrugada`
 
 `*/2 4-6 * * *` UTC = **01:00 às 03:59 de Brasília**, a cada 2 minutos.
@@ -388,6 +414,14 @@ removeu. O que sobra de verdade para decidir por etapa é só uma coisa: a ausê
 do dado exclui, ou não.
 
 ## 5. Armadilhas já pagas — não repetir
+
+- **`supautils` recusa `DELETE` sem `WHERE` — mas só para quem não é `postgres`.**
+  `garantir_pessoa_dados` e `medir_cobertura` faziam `delete from … ;` e passaram
+  em todos os testes, porque o MCP executa como `postgres`. No primeiro uso real
+  a tela deu **"Não consegui calcular o funil · DELETE requires a WHERE clause"**:
+  quem abre o app é `authenticated`. Use `where true` para dizer "a tabela
+  inteira, de propósito" — e **teste com `set local role authenticated`**, não
+  só pelo MCP. Reparado na migration 86.
 
 - **`jsonb_typeof(x) <> 'array'` é NULL quando a chave não existe, não TRUE.**
   Foi assim que `resolver_etapa` (migration 67) fez **toda etapa salva no
