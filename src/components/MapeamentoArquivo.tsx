@@ -27,7 +27,8 @@ export function MapeamentoArquivo({
 }: {
   analise: Analise
   campos: CampoCanonico[]
-  aoConcluir: () => void
+  /** o id da importação ingerida: a Etapa 2 usa isso como universo */
+  aoConcluir: (importacaoId: string) => void
   aoDescartar: () => void
 }) {
   const [mapeamento, setMapeamento] = useState<Record<string, string>>(analise.mapeamento ?? {})
@@ -74,7 +75,7 @@ export function MapeamentoArquivo({
           r.duracao_ms ? formatarDuracao(r.duracao_ms) : null,
         ].filter(Boolean).join(' · '),
       })
-      aoConcluir()
+      aoConcluir(analise.importacao_id)
     },
     onError: (e: Error & { bloqueio?: boolean }) =>
       toast.error(

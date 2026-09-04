@@ -252,12 +252,18 @@ export function colunasDe(etapas: Etapa[]): string[] {
   return [...vistas]
 }
 
-function config(i: Partial<Iniciativa>) {
+function config(i: Partial<Iniciativa> & {
+  pular_bloqueio_duro?: boolean
+  importacoes?: string[]
+}) {
   return {
     pesos: i.pesos ?? {},
     times: i.times ?? [],
     anti_fadiga_dias: i.anti_fadiga_dias ?? 7,
     excluir_perdido_dias: i.excluir_perdido_dias ?? 15,
+    pular_bloqueio_duro: i.pular_bloqueio_duro ?? false,
+    // ausente ou vazio = a base inteira, que é o comportamento de sempre
+    importacoes: i.importacoes ?? [],
   }
 }
 
@@ -287,6 +293,21 @@ export async function listarCampos(): Promise<CampoFiltravel[]> {
     .from('campo_filtravel').select('*').order('ordem')
   if (error) throw error
   return data ?? []
+}
+
+/**
+ * Quantas pessoas vieram de cada importação.
+ *
+ * É o tamanho da base da Etapa 2 quando a Etapa 1 declarou de onde ela veio —
+ * e não é o mesmo que `linhas_lidas`: um relatório de 271 linhas produz 229
+ * pessoas, porque uma pessoa compra mais de uma vez.
+ */
+export async function contarPessoasDaImportacao(ids: string[]): Promise<number> {
+  if (ids.length === 0) return 0
+  const { data, error } = await exigirSupabase()
+    .rpc('pessoas_da_importacao', { p_ids: ids })
+  if (error) throw error
+  return (data ?? []).length
 }
 
 /** Quantas pessoas da base têm cada campo preenchido. */

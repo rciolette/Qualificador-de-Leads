@@ -13,12 +13,12 @@ import { formatarNumero, listarImportacoes, mostrar } from '@/lib/dados'
 import { analisarArquivos, type Analise, type CampoCanonico, type Progresso } from '@/lib/importar'
 import { ZonaDeUpload } from '@/components/ZonaDeUpload'
 import {
-  calcularFunil, colunasDe, gerarLista, listarPerfis,
+  calcularFunil, colunasDe, contarPessoasDaImportacao, gerarLista, listarPerfis,
   pessoasDaEtapa, resolverColunas, salvarIniciativa, salvarModelo,
   EIXOS, type Etapa, type Iniciativa, type LinhaFunil, type ModeloFluxo,
 } from '@/lib/iniciativas'
 import { baixarLista } from '@/lib/exportar'
-import type { TimeComercial, TipoIniciativa } from '@/lib/tipos'
+import type { Importacao, TimeComercial, TipoIniciativa } from '@/lib/tipos'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -65,6 +65,7 @@ interface Rascunho {
   antiFadiga: number
   perdidoDias: number
   pularBloqueio: boolean
+  importacoes: string[]
   etapas: Etapa[]
   pesos: Record<string, number>
   listaId: string | null
@@ -111,6 +112,18 @@ export function FluxoPage() {
    * depois. A pergunta é curta e o padrão é o que quase sempre se quer.
    */
   const [aConfirmar, setAConfirmar] = useState<File[] | null>(null)
+  /**
+   * De onde a base da Etapa 2 vem.
+   *
+   * O arquivo que a pessoa acabou de subir É a base dela; o resto é histórico.
+   * Antes disto a Etapa 2 sempre começava com `pessoa` inteira — 4.589 pessoas —
+   * e quem subia um relatório de 229 vendas precisava adivinhar que o caminho
+   * era adicionar um cartão "Projeto = X" para voltar às suas 229.
+   *
+   * Vazio significa a base inteira, que continua sendo uma escolha legítima:
+   * deixou de ser o padrão silencioso.
+   */
+  const [basesEscolhidas, setBasesEscolhidas] = useState<string[]>(inicial.importacoes ?? [])
 
   function receberArquivos(arquivos: File[]) {
     if (arquivos.length > 1) setAConfirmar(arquivos)
@@ -190,8 +203,8 @@ export function FluxoPage() {
 
   const config = useMemo(() => ({
     pesos, times, anti_fadiga_dias: antiFadiga, excluir_perdido_dias: perdidoDias,
-    pular_bloqueio_duro: pularBloqueio,
-  }), [pesos, times, antiFadiga, perdidoDias, pularBloqueio])
+    pular_bloqueio_duro: pularBloqueio, importacoes: basesEscolhidas,
+  }), [pesos, times, antiFadiga, perdidoDias, pularBloqueio, basesEscolhidas])
 
   /**
    * O funil recalcula com atraso, de propósito.
@@ -230,7 +243,7 @@ export function FluxoPage() {
 
   // guarda o rascunho a cada mudança: sair da aba e voltar não pode custar o funil
   useEffect(() => {
-    gravarRascunho({ passo, nome, tipo, times, antiFadiga, perdidoDias, pularBloqueio, etapas, pesos, listaId })
+    gravarRascunho({ passo, nome, tipo, times, antiFadiga, perdidoDias, pularBloqueio, importacoes: basesEscolhidas, etapas, pesos, listaId })
   })
 
 
@@ -361,7 +374,10 @@ export function FluxoPage() {
                   key={a.importacao_id}
                   analise={a}
                   campos={camposArquivo}
-                  aoConcluir={() => {
+                  aoConcluir={(importacaoId) => {
+                    // a Etapa 2 parte daqui: é este arquivo que vira a base
+                    setBasesEscolhidas((atuais) =>
+                      atuais.includes(importacaoId) ? atuais : [...atuais, importacaoId])
                     const restantes = analises.filter((y) => y.importacao_id !== a.importacao_id)
                     setAnalises(restantes)
                     qc.invalidateQueries({ queryKey: ['importacoes'] })
@@ -437,6 +453,12 @@ export function FluxoPage() {
       {passo === 2 && (
         <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
           <div className="space-y-6">
+            <CartaoDaBase
+              escolhidas={basesEscolhidas}
+              aoMudar={setBasesEscolhidas}
+              importacoes={importacoes.data ?? []}
+            />
+
             {/* Recolhido por padrão: nome, tipo, times e as duas janelas só
                 importam na hora de gerar, e ocupavam o topo da tela durante todo
                 o tempo em que a pessoa está montando o funil. */}
@@ -763,6 +785,108 @@ export function FluxoPage() {
  * em pessoa/transacao e um filtro por lote no funil — decisão de produto, não
  * de tela.
  */
+/**
+ * De onde a base da Etapa 2 vem — a primeira coisa que a tela precisa dizer.
+ *
+ * O funil parte do que a Etapa 1 trouxe. Sem este cartão, "A base 4.589" no
+ * painel era a soma de tudo que já foi importado, e quem tinha acabado de subir
+ * um relatório de 229 vendas não tinha como saber que aquelas 229 estavam
+ * diluídas ali dentro.
+ *
+ * "Toda a base" continua disponível, e é o que vale quando ninguém escolheu
+ * nada — montar lista sobre o acumulado é legítimo. O que mudou é que agora é
+ * uma escolha visível, não o padrão silencioso.
+ */
+function CartaoDaBase({
+  escolhidas, aoMudar, importacoes,
+}: {
+  escolhidas: string[]
+  aoMudar: (ids: string[]) => void
+  importacoes: Importacao[]
+}) {
+  const [aberto, setAberto] = useState(false)
+  const ingeridas = importacoes.filter((i) => i.status === 'ingerido')
+  const nomes = escolhidas
+    .map((id) => ingeridas.find((i) => i.id === id))
+    .filter((i): i is Importacao => Boolean(i))
+
+  const total = useQuery({
+    queryKey: ['pessoas-da-base', escolhidas],
+    queryFn: () => contarPessoasDaImportacao(escolhidas),
+    enabled: escolhidas.length > 0,
+  })
+
+  function alternar(id: string) {
+    aoMudar(escolhidas.includes(id)
+      ? escolhidas.filter((x) => x !== id)
+      : [...escolhidas, id])
+  }
+
+  return (
+    <Card>
+      <CardContent className="pt-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-micro uppercase text-muted-foreground">A base destes filtros</p>
+            {nomes.length > 0 ? (
+              <p className="text-body font-medium">
+                {nomes.map((i) => i.nome ?? i.arquivo).join(' + ')}
+                <span className="ml-2 text-label font-normal text-muted-foreground">
+                  {total.data !== undefined
+                    ? `${formatarNumero(total.data)} pessoas`
+                    : 'contando…'}
+                </span>
+              </p>
+            ) : (
+              <p className="text-body font-medium">
+                Toda a base
+                <span className="ml-2 text-label font-normal text-muted-foreground">
+                  tudo o que já foi importado
+                </span>
+              </p>
+            )}
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setAberto(!aberto)}>
+            {aberto ? 'Fechar' : 'Trocar'}
+          </Button>
+        </div>
+
+        {aberto && (
+          <div className="mt-3 space-y-1 border-t border-border pt-3">
+            <button
+              onClick={() => { aoMudar([]); setAberto(false) }}
+              className={cn('flex w-full items-baseline justify-between gap-3 rounded-lg px-2 py-1.5 text-left text-label transition-colors hover:bg-muted',
+                escolhidas.length === 0 && 'bg-muted')}
+            >
+              <span>Toda a base</span>
+              <span className="text-micro text-muted-foreground">todas as importações</span>
+            </button>
+
+            {ingeridas.map((i) => (
+              <label key={i.id}
+                className="flex cursor-pointer items-baseline justify-between gap-3 rounded-lg px-2 py-1.5 text-label hover:bg-muted">
+                <span className="flex min-w-0 items-baseline gap-2">
+                  <input type="checkbox" checked={escolhidas.includes(i.id)}
+                    onChange={() => alternar(i.id)} className="accent-primary" />
+                  <span className="truncate">{i.nome ?? i.arquivo}</span>
+                </span>
+                <span className="shrink-0 text-micro tabular-nums text-muted-foreground">
+                  {formatarNumero(i.linhas_lidas)} linhas
+                </span>
+              </label>
+            ))}
+
+            <p className="px-2 pt-1 text-micro text-muted-foreground">
+              Marcar mais de uma soma as pessoas das duas. Quem aparece nas duas
+              conta uma vez só.
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 function ConfirmarVariosArquivos({
   arquivos, aoMesclar, aoSeparar, aoCancelar,
 }: {
