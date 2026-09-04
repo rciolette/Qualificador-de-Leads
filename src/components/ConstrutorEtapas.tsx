@@ -638,7 +638,7 @@ function LinhaCondicao({
           </Select>
         </div>
 
-        <div className="min-w-[9rem] flex-1">
+        <div className={cn('min-w-[9rem] flex-1', ehLista && 'basis-full')}>
           {!precisaValor ? (
             <div className="flex h-10 items-center text-label text-muted-foreground">
               —
@@ -663,20 +663,28 @@ function LinhaCondicao({
             <Input type="number" value={(condicao.valor as string) ?? ''}
               onChange={(e) => aoMudar({ valor: e.target.value })} />
           ) : ehLista ? (
-            <div className="max-h-32 overflow-y-auto rounded-lg border border-border p-2">
+            // `break-words` e não `truncate`: os valores desta lista distinguem-se
+            // justamente pelo fim — "Vendas | Account Executives · Ganho" e
+            // "… · Perdido" viram o mesmo texto cortado, e a escolha fica no
+            // escuro. Quebrar em duas linhas custa altura; truncar custa a
+            // informação que decide o filtro. `resize-y` deixa arrastar a altura.
+            <div className="max-h-56 min-w-0 resize-y overflow-auto rounded-lg border border-border p-2">
               {valores.isLoading && (
                 <p className="text-micro text-muted-foreground">carregando opções…</p>
               )}
               {(valores.data ?? []).map((v) => (
-                <label key={v} className="flex cursor-pointer items-center gap-2 py-0.5 text-label">
+                <label key={v} title={v}
+                  className="flex cursor-pointer items-start gap-2 py-1 text-label">
                   <input type="checkbox" checked={selecionados.includes(v)}
-                    onChange={() => alternar(v)} className="accent-primary" />
-                  <span className="truncate">{v}</span>
+                    onChange={() => alternar(v)}
+                    className="mt-0.5 shrink-0 accent-primary" />
+                  <span className="min-w-0 break-words">{v}</span>
                 </label>
               ))}
               {valores.data?.length === 0 && (
                 <p className="text-micro text-muted-foreground">
-                  Nenhum valor na base ainda — a fonte pode não ter sincronizado.
+                  Nenhuma pessoa da base tem esse campo preenchido. Sem valor para
+                  escolher, esta condição não filtra nada.
                 </p>
               )}
             </div>
