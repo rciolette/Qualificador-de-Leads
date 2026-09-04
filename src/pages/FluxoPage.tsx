@@ -24,6 +24,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -63,6 +64,7 @@ interface Rascunho {
   times: TimeComercial[]
   antiFadiga: number
   perdidoDias: number
+  pularBloqueio: boolean
   etapas: Etapa[]
   pesos: Record<string, number>
   listaId: string | null
@@ -146,6 +148,17 @@ export function FluxoPage() {
   const [times, setTimes] = useState<TimeComercial[]>(inicial.times ?? ['IS'])
   const [antiFadiga, setAntiFadiga] = useState(inicial.antiFadiga ?? 7)
   const [perdidoDias, setPerdidoDias] = useState(inicial.perdidoDias ?? 15)
+  /**
+   * Desligar as regras de segurança inteiras.
+   *
+   * Elas existem para não disparar para quem não pode receber, e por isso são o
+   * padrão. Mas nem toda lista vira disparo: conferir se as vendas da Assiny
+   * constam como ganho no CRM é auditoria, e aí cortar quem está "em conexão" ou
+   * "perdido há ≤ 15 dias" esconde justamente os casos que se quer achar.
+   * Medido numa conferência real: 71 pessoas com os bloqueios desligados, 27 com
+   * eles ligados — e as 44 que somem são dado, não ruído.
+   */
+  const [pularBloqueio, setPularBloqueio] = useState(inicial.pularBloqueio ?? false)
   const [etapas, setEtapas] = useState<Etapa[]>(inicial.etapas ?? [])
   /**
    * Desfazer o funil, e só ele.
@@ -177,7 +190,8 @@ export function FluxoPage() {
 
   const config = useMemo(() => ({
     pesos, times, anti_fadiga_dias: antiFadiga, excluir_perdido_dias: perdidoDias,
-  }), [pesos, times, antiFadiga, perdidoDias])
+    pular_bloqueio_duro: pularBloqueio,
+  }), [pesos, times, antiFadiga, perdidoDias, pularBloqueio])
 
   /**
    * O funil recalcula com atraso, de propósito.
@@ -216,7 +230,7 @@ export function FluxoPage() {
 
   // guarda o rascunho a cada mudança: sair da aba e voltar não pode custar o funil
   useEffect(() => {
-    gravarRascunho({ passo, nome, tipo, times, antiFadiga, perdidoDias, etapas, pesos, listaId })
+    gravarRascunho({ passo, nome, tipo, times, antiFadiga, perdidoDias, pularBloqueio, etapas, pesos, listaId })
   })
 
 
@@ -298,6 +312,9 @@ export function FluxoPage() {
       if (Array.isArray(c.times)) setTimes(c.times as TimeComercial[])
       if (typeof c.anti_fadiga_dias === 'number') setAntiFadiga(c.anti_fadiga_dias)
       if (typeof c.excluir_perdido_dias === 'number') setPerdidoDias(c.excluir_perdido_dias)
+      // um modelo de conferência guarda que não quer os bloqueios; um de disparo,
+      // que quer. A escolha é do modelo, não do último estado da tela.
+      if (typeof c.pular_bloqueio_duro === 'boolean') setPularBloqueio(c.pular_bloqueio_duro)
     }
   }
 
@@ -474,10 +491,22 @@ export function FluxoPage() {
                   <Input id="pd" type="number" min={0} value={perdidoDias}
                     onChange={(e) => setPerdidoDias(Number(e.target.value))} />
                   <p className="text-micro text-muted-foreground">
-                    Hoje esta janela sozinha tira 1.474 pessoas — é o maior dos
-                    bloqueios. 0 desliga.
+                    É o maior dos bloqueios. 0 desliga só ele.
                   </p>
                 </div>
+
+                <label className="flex items-start justify-between gap-4 rounded-lg bg-muted/40 px-3 py-2 sm:col-span-2">
+                  <span className="text-label">
+                    Desligar todas as regras de segurança
+                    <span className="mt-0.5 block text-micro text-muted-foreground">
+                      {pularBloqueio
+                        ? 'Modo conferência: ninguém é cortado por opt-out, cadência ou perda recente. Use para auditar, não para disparar.'
+                        : 'Recomendado. Opt-out, cadência automática, falha de entrega e perda recente cortam antes dos seus filtros.'}
+                    </span>
+                  </span>
+                  <Switch checked={pularBloqueio} onCheckedChange={setPularBloqueio}
+                    aria-label="Desligar regras de segurança" />
+                </label>
               </div>
             </details>
 
