@@ -415,6 +415,26 @@ do dado exclui, ou não.
 
 ## 5. Armadilhas já pagas — não repetir
 
+- **QUATRO lugares montavam o objeto que o funil julga, e eu só conhecia três.**
+  `garantir_pessoa_dados`, `medir_cobertura`, `filtrar` — e `v_dados_pessoa`, a
+  view que `pessoas_da_etapa` e `gerar_lista` usam. Ao adicionar
+  `derivados_negocio` só nos três, o filtro funcionava (229 → 196) e a lista
+  exportada vinha com as colunas do HubSpot **todas vazias**. Hoje a view é um
+  apelido de `pessoa_dados` e o objeto se monta num lugar só.
+- **Pôr função derivada dentro de view é multiplicá-la por linha.**
+  `derivados_negocio(c.deals)` dentro de `v_dados_pessoa` levou a view de ~1 s
+  para **5.438 ms**, e `gerar_lista` estourou o statement timeout de 8 s —
+  exatamente o erro que a migration 58 já tinha resolvido uma vez. Derivado que
+  o funil precisa vai para `pessoa_dados`, materializado; a view só lê.
+- **O seletor de valores tem que ler a MESMA fonte que o filtro julga.**
+  `valores_do_campo` lia de `v_pessoa_completa` e os campos derivados não moram
+  lá: o seletor abria vazio, com a mensagem "a fonte pode não ter sincronizado"
+  — que era falsa. Pior que vazio: sem valor escolhido, a condição vira
+  `_ignorar` e a etapa aparece montada na tela sem filtrar ninguém.
+- **Etapa de pipeline do HubSpot: use `metadata.probability`, não o nome.**
+  "Ganho" num pipeline é "Negócio fechado" em outro e "Fechado Ganho" num
+  terceiro. A API marca `isClosed` e `probability` — 1 é ganho.
+
 - **`supautils` recusa `DELETE` sem `WHERE` — mas só para quem não é `postgres`.**
   `garantir_pessoa_dados` e `medir_cobertura` faziam `delete from … ;` e passaram
   em todos os testes, porque o MCP executa como `postgres`. No primeiro uso real
